@@ -8,9 +8,7 @@ windylane is a self-hosted control plane for distributed task execution and
 webhook delivery, built with Go, Postgres, Redis, Next.js, and Tailwind CSS.
 The product target is [`windylane.dev`](https://windylane.dev).
 
-Current release: [`v0.4.1-release-polish`](https://github.com/shyxur/windylane/releases/tag/v0.4.1-release-polish)
-
-Prepared release: [v0.5.0 — TaskCanvas](docs/releases/v0.5.0.md)
+Current release: [`v0.5.0 — TaskCanvas`](./docs/releases/v0.5.0.md)
 
 QueueFlow provides a multi-tenant, at-least-once task queue. Postgres is the
 durable source of truth; Redis handles priority-aware dispatch and hot state.
