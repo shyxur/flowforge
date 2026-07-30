@@ -167,6 +167,9 @@ install dependencies, and start it with:
 make dashboard
 ```
 
+`QUEUEFLOW_API_KEY` is consumed only by Next.js server components and server
+actions. It must never use a `NEXT_PUBLIC_` prefix.
+
 ## Troubleshooting
 
 - `401`: verify the Bearer key and that it is not revoked.
