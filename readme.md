@@ -157,6 +157,7 @@ make lint     Run go vet
 make api      Run the producer API locally
 make worker   Run one worker locally
 make dashboard  Run the Next.js dashboard on localhost:3000
+make redis-rebuild  Rebuild pending/delayed Redis state from Postgres
 ```
 
 Integration tests use `docker-compose.integration.yml`, ephemeral container
@@ -176,6 +177,14 @@ make dashboard
 
 `QUEUEFLOW_API_KEY` is consumed only by Next.js server components and server
 actions. It must never use a `NEXT_PUBLIC_` prefix.
+
+### Redis reconstruction
+
+After a full Redis flush, stop workers and run `make redis-rebuild` with the
+normal `DB_DSN` and Redis environment variables. The command scans only
+non-deleted `pending` tasks from Postgres, clears any stale hot-state entries,
+and rebuilds tenant-scoped pending or delayed entries based on `visible_at`.
+It is safe to run repeatedly; Postgres remains authoritative.
 
 ### Task event stream
 

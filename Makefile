@@ -1,4 +1,4 @@
-.PHONY: up down migrate test test-integration lint api worker dashboard
+.PHONY: up down migrate test test-integration lint api worker dashboard redis-rebuild
 
 up:
 	docker compose up --build -d
@@ -26,3 +26,6 @@ worker:
 
 dashboard:
 	npm --prefix apps/dashboard run dev
+
+redis-rebuild:
+	go run ./cmd/maintenance redis-rebuild

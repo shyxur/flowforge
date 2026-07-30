@@ -30,6 +30,7 @@ type StorageStub struct {
 	ListWorkersFunc             func(context.Context, uuid.UUID) ([]*domain.Worker, error)
 	UpsertWorkerHeartbeatFunc   func(context.Context, *domain.Worker) error
 	ListActiveQueueScopesFunc   func(context.Context) ([]domain.QueueScope, error)
+	ListDispatchableTasksFunc   func(context.Context, uuid.UUID, int) ([]*domain.Task, error)
 	PingFunc                    func(context.Context) error
 }
 
@@ -156,6 +157,12 @@ func (s *StorageStub) UpsertWorkerHeartbeat(ctx context.Context, worker *domain.
 func (s *StorageStub) ListActiveQueueScopes(ctx context.Context) ([]domain.QueueScope, error) {
 	if s.ListActiveQueueScopesFunc != nil {
 		return s.ListActiveQueueScopesFunc(ctx)
+	}
+	return nil, nil
+}
+func (s *StorageStub) ListDispatchableTasks(ctx context.Context, afterID uuid.UUID, limit int) ([]*domain.Task, error) {
+	if s.ListDispatchableTasksFunc != nil {
+		return s.ListDispatchableTasksFunc(ctx, afterID, limit)
 	}
 	return nil, nil
 }

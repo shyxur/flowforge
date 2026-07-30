@@ -488,6 +488,28 @@ func (s *PostgresStorage) ListActiveQueueScopes(ctx context.Context) ([]domain.Q
 	return scopes, rows.Err()
 }
 
+func (s *PostgresStorage) ListDispatchableTasks(ctx context.Context, afterID uuid.UUID, limit int) ([]*domain.Task, error) {
+	rows, err := s.pool.Query(ctx, fmt.Sprintf(`
+		SELECT %s FROM tasks
+		WHERE status='pending' AND deleted_at IS NULL AND id > $1
+		ORDER BY id ASC
+		LIMIT $2
+	`, taskColumns), afterID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: list dispatchable tasks: %w", err)
+	}
+	defer rows.Close()
+	var tasks []*domain.Task
+	for rows.Next() {
+		task, err := scanTaskRow(rows)
+		if err != nil {
+			return nil, fmt.Errorf("postgres: list dispatchable tasks scan: %w", err)
+		}
+		tasks = append(tasks, task)
+	}
+	return tasks, rows.Err()
+}
+
 func encodeCursor(createdAt time.Time, id uuid.UUID) string {
 	value := createdAt.UTC().Format(time.RFC3339Nano) + "|" + id.String()
 	return base64.RawURLEncoding.EncodeToString([]byte(value))
