@@ -38,11 +38,12 @@ type TaskService interface {
 }
 
 type Handler struct {
-	service                TaskService
-	webhookService         WebhookService
-	webhookDeliveryService WebhookDeliveryService
-	workflowService        WorkflowService
-	logger                 *zap.Logger
+	service                  TaskService
+	webhookService           WebhookService
+	webhookDeliveryService   WebhookDeliveryService
+	workflowService          WorkflowService
+	workflowExecutionService WorkflowExecutionService
+	logger                   *zap.Logger
 }
 
 func (handler *Handler) WithWebhookDeliveryService(service WebhookDeliveryService) *Handler {
@@ -52,6 +53,11 @@ func (handler *Handler) WithWebhookDeliveryService(service WebhookDeliveryServic
 
 func (handler *Handler) WithWorkflowService(service WorkflowService) *Handler {
 	handler.workflowService = service
+	return handler
+}
+
+func (handler *Handler) WithWorkflowExecutionService(service WorkflowExecutionService) *Handler {
+	handler.workflowExecutionService = service
 	return handler
 }
 

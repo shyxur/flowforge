@@ -335,7 +335,7 @@ func TestWorkflowValidationAndPublishingLifecycle(t *testing.T) {
 		"definition":{
 			"nodes":[
 				{"id":"start","type":"trigger","name":"Start","config":{}},
-				{"id":"work","type":"webhook","name":"Changed","config":{"url":"https://example.com"}}
+				{"id":"work","type":"webhook","name":"Changed","config":{"endpoint_id":"00000000-0000-4000-8000-000000000002"}}
 			],
 			"edges":[{"id":"start-work","from":"start","to":"work","condition":null}]
 		}

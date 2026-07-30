@@ -16,6 +16,7 @@ const (
 	WebhookEventTaskFailed     WebhookEventType = "task.failed"
 	WebhookEventTaskDeadLetter WebhookEventType = "task.dead_letter"
 	WebhookEventTaskCancelled  WebhookEventType = "task.cancelled"
+	WebhookEventWorkflowNode   WebhookEventType = "workflow.node"
 )
 
 func (eventType WebhookEventType) Valid() bool {

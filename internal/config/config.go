@@ -33,6 +33,7 @@ type Config struct {
 	WebhookDeliveryMaxAttempts    int
 	WebhookDeliveryInitialBackoff time.Duration
 	WebhookDeliveryMaxBackoff     time.Duration
+	WorkflowReconcileInterval     time.Duration
 }
 
 func Load() *Config {
@@ -66,6 +67,7 @@ func Load() *Config {
 	v.SetDefault("WEBHOOK_DELIVERY_MAX_ATTEMPTS", 5)
 	v.SetDefault("WEBHOOK_DELIVERY_INITIAL_BACKOFF_SEC", 5)
 	v.SetDefault("WEBHOOK_DELIVERY_MAX_BACKOFF_SEC", 3600)
+	v.SetDefault("WORKFLOW_RECONCILE_INTERVAL_SEC", 1)
 
 	return &Config{
 		DBDSN:                         v.GetString("DB_DSN"),
@@ -94,5 +96,6 @@ func Load() *Config {
 		WebhookDeliveryMaxAttempts:    v.GetInt("WEBHOOK_DELIVERY_MAX_ATTEMPTS"),
 		WebhookDeliveryInitialBackoff: time.Duration(v.GetInt("WEBHOOK_DELIVERY_INITIAL_BACKOFF_SEC")) * time.Second,
 		WebhookDeliveryMaxBackoff:     time.Duration(v.GetInt("WEBHOOK_DELIVERY_MAX_BACKOFF_SEC")) * time.Second,
+		WorkflowReconcileInterval:     time.Duration(v.GetInt("WORKFLOW_RECONCILE_INTERVAL_SEC")) * time.Second,
 	}
 }

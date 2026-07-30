@@ -27,9 +27,9 @@ events.
   webhook deliveries.
 - Encrypted webhook signing secrets, `X-Windylane-*` signatures, delivery
   retries, and delivery logs.
-- Tenant-scoped TaskCanvas workflow drafts, publish-safe graph validation, and
-  immutable sequential version snapshots. Visual editing and execution are not
-  yet available.
+- Tenant-scoped TaskCanvas workflow drafts, publish-safe graph validation,
+  immutable version snapshots, and durable backend execution through
+  QueueFlow/EventForge. Visual editing is not yet available.
 
 ## Architecture
 
@@ -175,6 +175,10 @@ POST   /v1/workflows/{id}/validate
 POST   /v1/workflows/{id}/publish
 GET    /v1/workflows/{id}/versions
 GET    /v1/workflows/{id}/versions/{version}
+POST   /v1/workflows/{id}/executions
+GET    /v1/workflows/{id}/executions
+GET    /v1/workflows/{id}/executions/{execution_id}
+POST   /v1/workflows/{id}/executions/{execution_id}/cancel
 GET    /healthz
 GET    /readyz
 ```
@@ -259,9 +263,9 @@ curl -i http://localhost:8080/v1/workflows \
   }'
 ```
 
-See [TaskCanvas workflow validation and publishing](docs/taskcanvas.md) for
-graph rules, immutable version snapshots, and API details. Execution and the
-visual canvas are not implemented yet.
+See [TaskCanvas workflows](docs/taskcanvas.md) for graph rules, immutable
+version snapshots, execution node schemas, idempotency, recovery, and API
+details. The visual editor and execution timeline UI are not implemented yet.
 
 ## Worker lifecycle
 
@@ -387,8 +391,8 @@ generated or mock screenshots are not product evidence.
 - [x] Phase 1 — QueueFlow core task engine and dashboard.
 - [x] Phase 2 — EventForge webhook management and delivery lifecycle.
 - [ ] Phase 3 — TaskCanvas visual workflow orchestration (draft CRUD, graph
-  validation, publishing, and immutable version snapshots available; builder
-  and execution pending).
+  validation, publishing, immutable snapshots, and backend execution available;
+  visual builder and timeline UI pending).
 - [ ] Phase 4 — QueueLens observability, metrics, and throughput analytics.
 
 ## License and brand policy

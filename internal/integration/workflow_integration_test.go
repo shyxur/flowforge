@@ -29,7 +29,7 @@ func TestWorkflowRepository(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	if _, err := pool.Exec(ctx, "TRUNCATE workflow_versions, workflows"); err != nil {
+	if _, err := pool.Exec(ctx, "TRUNCATE workflow_node_executions, workflow_executions, workflow_versions, workflows"); err != nil {
 		t.Fatal(err)
 	}
 	storage, err := postgres.NewPostgresStorage(ctx, dsn)

@@ -74,7 +74,7 @@ func TestEventForgeLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	if _, err := pool.Exec(ctx, "TRUNCATE webhook_deliveries, webhook_endpoints, tasks, workers"); err != nil {
+	if _, err := pool.Exec(ctx, "TRUNCATE workflow_node_executions, workflow_executions, workflow_versions, workflows, webhook_deliveries, webhook_endpoints, tasks, workers"); err != nil {
 		t.Fatal(err)
 	}
 	assertMigrationsAndSeed(t, ctx, pool)

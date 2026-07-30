@@ -3,8 +3,10 @@ package usecase
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/shyxur/windylane/internal/domain"
 )
 
@@ -42,6 +44,27 @@ func ValidateWorkflowDefinition(definition domain.WorkflowDefinition) domain.Wor
 		}
 		if node.Config == nil {
 			addError("unsupported_config_shape", "node config must be an object", path+".config")
+		} else {
+			var configErr error
+			switch node.Type {
+			case domain.WorkflowNodeTask:
+				_, configErr = parseWorkflowTaskConfig(node.Config)
+			case domain.WorkflowNodeWebhook:
+				config, err := parseWorkflowWebhookConfig(node.Config)
+				configErr = err
+				if configErr == nil {
+					if _, err := uuid.Parse(config.EndpointID); err != nil {
+						configErr = errors.New("endpoint_id must be a UUID")
+					}
+				}
+			case domain.WorkflowNodeDelay:
+				_, configErr = parseWorkflowDelayConfig(node.Config)
+			case domain.WorkflowNodeCondition:
+				_, configErr = parseWorkflowConditionConfig(node.Config)
+			}
+			if configErr != nil {
+				addError("invalid_node_config", configErr.Error(), path+".config")
+			}
 		}
 		if node.Type == domain.WorkflowNodeTrigger {
 			triggerCount++
@@ -94,6 +117,11 @@ func ValidateWorkflowDefinition(definition domain.WorkflowDefinition) domain.Wor
 			var condition map[string]any
 			if err := json.Unmarshal(edge.Condition, &condition); err != nil || condition == nil {
 				addError("unsupported_config_shape", "edge condition must be an object or null", path+".condition")
+			}
+		}
+		if source, exists := nodes[edge.From]; exists && source.Type == domain.WorkflowNodeCondition {
+			if _, err := parseWorkflowBranch(edge.Condition); err != nil {
+				addError("invalid_condition_branch", err.Error(), path+".condition")
 			}
 		}
 		if fromExists && toExists {

@@ -11,6 +11,7 @@ import (
 	"github.com/shyxur/windylane/internal/storage/postgres"
 	"github.com/shyxur/windylane/internal/usecase"
 	"github.com/shyxur/windylane/internal/webhook"
+	"github.com/shyxur/windylane/internal/worker"
 	"go.uber.org/zap"
 )
 
@@ -37,10 +38,18 @@ func main() {
 	webhookService := usecase.NewWebhookService(storage, secretCipher, cfg.AllowInsecureLocalWebhooks)
 	webhookDeliveryService := usecase.NewWebhookDeliveryLogService(storage)
 	workflowService := usecase.NewWorkflowService(storage)
+	taskDispatcher := usecase.NewQueueFlowWorkflowTaskDispatcher(service)
+	webhookDispatcher := usecase.NewEventForgeWorkflowWebhookDispatcher(
+		storage, storage, cfg.WebhookDeliveryMaxAttempts,
+	)
+	workflowExecutionService := usecase.NewWorkflowExecutionService(
+		storage, storage, taskDispatcher, webhookDispatcher,
+	)
 	auth := usecase.NewAuthService(storage)
 	handler := api.NewHandler(service, logger, webhookService).
 		WithWebhookDeliveryService(webhookDeliveryService).
-		WithWorkflowService(workflowService)
+		WithWorkflowService(workflowService).
+		WithWorkflowExecutionService(workflowExecutionService)
 	router := api.NewRouter(handler, auth, limiter, logger)
 
 	srv := &http.Server{
@@ -50,8 +59,26 @@ func main() {
 		WriteTimeout: 10 * time.Second,
 	}
 
-	logger.Info("producer HTTP API starting", zap.String("port", cfg.HTTPPort))
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		logger.Fatal("http server failed", zap.Error(err))
+	runCtx, stop := worker.ContextWithSignals(ctx, logger)
+	defer stop()
+	go workflowExecutionService.ReconciliationLoop(
+		runCtx, cfg.WorkflowReconcileInterval, 100,
+	)
+	serverErrors := make(chan error, 1)
+	go func() {
+		logger.Info("producer HTTP API starting", zap.String("port", cfg.HTTPPort))
+		serverErrors <- srv.ListenAndServe()
+	}()
+	select {
+	case <-runCtx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			logger.Error("producer graceful shutdown failed", zap.Error(err))
+		}
+	case err := <-serverErrors:
+		if err != nil && err != http.ErrServerClosed {
+			logger.Fatal("http server failed", zap.Error(err))
+		}
 	}
 }
