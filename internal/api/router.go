@@ -34,6 +34,11 @@ func NewRouter(h *Handler, auth Authenticator, limiter ports.RateLimiter, logger
 	v1.HandleFunc("GET /v1/webhooks/deliveries", h.ListWebhookDeliveries)
 	v1.HandleFunc("GET /v1/webhooks/deliveries/{id}", h.GetWebhookDelivery)
 	v1.HandleFunc("POST /v1/webhooks/deliveries/{id}/retry", h.RetryWebhookDelivery)
+	v1.HandleFunc("POST /v1/workflows", h.CreateWorkflow)
+	v1.HandleFunc("GET /v1/workflows", h.ListWorkflows)
+	v1.HandleFunc("GET /v1/workflows/{id}", h.GetWorkflow)
+	v1.HandleFunc("PATCH /v1/workflows/{id}", h.UpdateWorkflow)
+	v1.HandleFunc("DELETE /v1/workflows/{id}", h.DeleteWorkflow)
 
 	var protected http.Handler = v1
 	protected = RateLimitMiddleware(limiter)(protected)

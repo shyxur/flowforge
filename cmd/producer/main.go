@@ -36,9 +36,11 @@ func main() {
 	service := usecase.NewService(storage, broker, eventService)
 	webhookService := usecase.NewWebhookService(storage, secretCipher, cfg.AllowInsecureLocalWebhooks)
 	webhookDeliveryService := usecase.NewWebhookDeliveryLogService(storage)
+	workflowService := usecase.NewWorkflowService(storage)
 	auth := usecase.NewAuthService(storage)
 	handler := api.NewHandler(service, logger, webhookService).
-		WithWebhookDeliveryService(webhookDeliveryService)
+		WithWebhookDeliveryService(webhookDeliveryService).
+		WithWorkflowService(workflowService)
 	router := api.NewRouter(handler, auth, limiter, logger)
 
 	srv := &http.Server{

@@ -41,11 +41,17 @@ type Handler struct {
 	service                TaskService
 	webhookService         WebhookService
 	webhookDeliveryService WebhookDeliveryService
+	workflowService        WorkflowService
 	logger                 *zap.Logger
 }
 
 func (handler *Handler) WithWebhookDeliveryService(service WebhookDeliveryService) *Handler {
 	handler.webhookDeliveryService = service
+	return handler
+}
+
+func (handler *Handler) WithWorkflowService(service WorkflowService) *Handler {
+	handler.workflowService = service
 	return handler
 }
 

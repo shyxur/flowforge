@@ -8,7 +8,7 @@ windylane is a self-hosted control plane for distributed task execution and
 webhook delivery, built with Go, Postgres, Redis, Next.js, and Tailwind CSS.
 The product target is [`windylane.dev`](https://windylane.dev).
 
-Current release: [`v0.4.0-windylane`](https://github.com/shyxur/windylane/releases/tag/v0.4.0-windylane)
+Current release: [`v0.4.1-release-polish`](https://github.com/shyxur/windylane/releases/tag/v0.4.1-release-polish)
 
 QueueFlow provides a multi-tenant, at-least-once task queue. Postgres is the
 durable source of truth; Redis handles priority-aware dispatch and hot state.
@@ -27,6 +27,8 @@ events.
   webhook deliveries.
 - Encrypted webhook signing secrets, `X-Windylane-*` signatures, delivery
   retries, and delivery logs.
+- Tenant-scoped TaskCanvas draft workflow storage and CRUD foundations with
+  validated node/edge definitions. Visual editing and execution are not yet available.
 
 ## Architecture
 
@@ -163,6 +165,11 @@ POST   /v1/webhooks/endpoints/{id}/rotate-secret
 GET    /v1/webhooks/deliveries
 GET    /v1/webhooks/deliveries/{id}
 POST   /v1/webhooks/deliveries/{id}/retry
+POST   /v1/workflows
+GET    /v1/workflows
+GET    /v1/workflows/{id}
+PATCH  /v1/workflows/{id}
+DELETE /v1/workflows/{id}
 GET    /healthz
 GET    /readyz
 ```
@@ -221,6 +228,35 @@ Delivery execution and signing run through the EventForge webhook worker.
 See the [EventForge webhook guide](docs/eventforge.md) for endpoint examples,
 HMAC verification, delivery logs, retry behavior, worker configuration,
 security guidance, and troubleshooting.
+
+### TaskCanvas workflow drafts
+
+TaskCanvas M1 provides tenant-scoped storage and CRUD for draft workflow
+definitions. Slugs are unique per organization and are generated from the name
+when omitted. Definitions require explicit `nodes` and `edges` arrays.
+
+```bash
+curl -i http://localhost:8080/v1/workflows \
+  -X POST \
+  -H 'Authorization: Bearer queueflow-dev-key' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "Send welcome email",
+    "definition": {
+      "nodes": [
+        {"id":"start","type":"trigger","name":"Start","config":{}},
+        {"id":"email","type":"task","name":"Email","config":{"queue":"email"}}
+      ],
+      "edges": [
+        {"id":"start-email","from":"start","to":"email","condition":null}
+      ]
+    }
+  }'
+```
+
+See [TaskCanvas workflow foundations](docs/taskcanvas.md) for validation and API
+details. Cycle detection, publishing/versioning, execution, and the visual
+canvas are intentionally outside M1.
 
 ## Worker lifecycle
 
@@ -345,7 +381,8 @@ generated or mock screenshots are not product evidence.
 
 - [x] Phase 1 — QueueFlow core task engine and dashboard.
 - [x] Phase 2 — EventForge webhook management and delivery lifecycle.
-- [ ] Phase 3 — TaskCanvas visual workflow orchestration (not started).
+- [ ] Phase 3 — TaskCanvas visual workflow orchestration (M1 draft storage and
+  CRUD foundations available; builder, publishing, and execution pending).
 - [ ] Phase 4 — QueueLens observability, metrics, and throughput analytics.
 
 ## License and brand policy
