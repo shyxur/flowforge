@@ -11,7 +11,7 @@ export function OneTimeSecret({
         <p className="eyebrow">one-time signing secret</p>
         <h2>copy this secret now</h2>
         <p>
-          It will not be shown again. Store it in your webhook consumer&apos;s
+          it will not be shown again. store it in your webhook consumer&apos;s
           secret manager.
         </p>
       </div>

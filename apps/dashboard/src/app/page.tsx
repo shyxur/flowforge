@@ -1,38 +1,59 @@
-const metrics = [
-  { label: "Pending", value: "—", tone: "amber" },
-  { label: "Processing", value: "—", tone: "blue" },
-  { label: "Completed", value: "—", tone: "green" },
-  { label: "Dead letter", value: "—", tone: "red" },
+import Link from "next/link";
+
+const operationalSurfaces = [
+  {
+    href: "/tasks",
+    label: "tasks",
+    description: "inspect queue state, attempts, workers, and timestamps.",
+  },
+  {
+    href: "/webhooks",
+    label: "webhooks",
+    description: "manage signed task lifecycle event destinations.",
+  },
+  {
+    href: "/webhook-deliveries",
+    label: "webhook deliveries",
+    description: "review delivery attempts, responses, and scheduled retries.",
+  },
+  {
+    href: "/dlq",
+    label: "dead letter queue",
+    description: "inspect exhausted tasks and recovery actions.",
+  },
 ];
 
 export default function OverviewPage() {
   return (
     <div className="space-y-8">
       <section>
-        <p className="eyebrow">Operations overview</p>
+        <p className="eyebrow">operations overview</p>
         <div className="mt-2 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
           <div>
-            <h1 className="page-title">Queue health at a glance</h1>
+            <h1 className="page-title">queue operations</h1>
             <p className="page-copy">
-              Monitor task throughput, workers, retries, and dead letters from
-              one tenant-safe control plane.
+              inspect tasks, workers, retries, and webhook delivery from one
+              tenant-safe control plane.
             </p>
           </div>
           <span className="status-pill">
             <span className="status-dot" />
-            Waiting for API
+            tenant scoped
           </span>
         </div>
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {metrics.map((metric) => (
-          <article className="panel metric-card" key={metric.label}>
-            <div className={`metric-mark metric-${metric.tone}`} />
-            <p className="metric-label">{metric.label}</p>
-            <p className="metric-value">{metric.value}</p>
-            <p className="metric-note">Live data will appear after connection.</p>
-          </article>
+        {operationalSurfaces.map((surface) => (
+          <Link
+            className="panel metric-card operation-card"
+            href={surface.href}
+            key={surface.href}
+          >
+            <p className="metric-label">{surface.label}</p>
+            <p className="metric-note">{surface.description}</p>
+            <span>open →</span>
+          </Link>
         ))}
       </section>
 
@@ -40,13 +61,13 @@ export default function OverviewPage() {
         <article className="panel p-6">
           <div className="section-heading">
             <div>
-              <p className="eyebrow">Task lifecycle</p>
-              <h2>Reliable by default</h2>
+              <p className="eyebrow">task lifecycle</p>
+              <h2>reliable by default</h2>
             </div>
-            <span className="tag">At-least-once</span>
+            <span className="tag">at-least-once</span>
           </div>
           <div className="mt-8 grid gap-3 sm:grid-cols-4">
-            {["Pending", "Processing", "Retry", "Completed / DLQ"].map(
+            {["pending", "processing", "retry", "completed / dlq"].map(
               (step, index) => (
                 <div className="flow-step" key={step}>
                   <span>{String(index + 1).padStart(2, "0")}</span>
@@ -60,22 +81,22 @@ export default function OverviewPage() {
         <article className="panel p-6">
           <div className="section-heading">
             <div>
-              <p className="eyebrow">Infrastructure</p>
-              <h2>System roles</h2>
+              <p className="eyebrow">infrastructure</p>
+              <h2>system roles</h2>
             </div>
           </div>
           <dl className="mt-6 space-y-4">
             <div className="definition-row">
-              <dt>Postgres</dt>
-              <dd>Durable source of truth</dd>
+              <dt>postgres</dt>
+              <dd>durable source of truth</dd>
             </div>
             <div className="definition-row">
-              <dt>Redis</dt>
-              <dd>Broker and hot state</dd>
+              <dt>redis</dt>
+              <dd>broker and hot state</dd>
             </div>
             <div className="definition-row">
-              <dt>Workers</dt>
-              <dd>Tenant-scoped execution</dd>
+              <dt>workers</dt>
+              <dd>tenant-scoped execution</dd>
             </div>
           </dl>
         </article>

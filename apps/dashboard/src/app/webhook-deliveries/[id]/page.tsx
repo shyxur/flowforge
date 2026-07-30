@@ -7,7 +7,7 @@ import {
 } from "@/lib/queueflow";
 import { retryWebhookDeliveryAction } from "../actions";
 
-export const metadata: Metadata = { title: "Webhook delivery detail" };
+export const metadata: Metadata = { title: "webhook delivery detail" };
 
 type Props = { params: Promise<{ id: string }> };
 

@@ -7,7 +7,7 @@ import {
 } from "@/lib/queueflow";
 import { deleteWebhookEndpointAction } from "./actions";
 
-export const metadata: Metadata = { title: "Webhooks" };
+export const metadata: Metadata = { title: "webhooks" };
 export const dynamic = "force-dynamic";
 
 export default async function WebhooksPage() {
@@ -31,7 +31,7 @@ export default async function WebhooksPage() {
         <div>
           <h1 className="page-title">webhooks</h1>
           <p className="page-copy">
-            Manage tenant-scoped destinations for signed task lifecycle events.
+            manage tenant-scoped destinations for signed task lifecycle events.
           </p>
         </div>
         <Link className="button button-primary" href="/webhooks/new">
@@ -46,9 +46,9 @@ export default async function WebhooksPage() {
         </section>
       ) : endpoints.length === 0 ? (
         <section className="panel empty-state">
-          <span className="empty-state-mark">H</span>
+          <span className="empty-state-mark">05</span>
           <h2>no webhook endpoints</h2>
-          <p>Create an endpoint to begin forwarding QueueFlow task events.</p>
+          <p>create an endpoint to begin forwarding queueflow task events.</p>
           <Link className="button button-primary empty-action" href="/webhooks/new">
             create endpoint
           </Link>

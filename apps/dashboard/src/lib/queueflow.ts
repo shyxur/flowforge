@@ -65,7 +65,7 @@ function config() {
   const apiKey = process.env.QUEUEFLOW_API_KEY;
   if (!baseURL || !apiKey) {
     throw new QueueFlowAPIError(
-      "Dashboard API configuration is incomplete. Set QUEUEFLOW_API_BASE_URL and QUEUEFLOW_API_KEY.",
+      "dashboard api configuration is incomplete. set QUEUEFLOW_API_BASE_URL and QUEUEFLOW_API_KEY.",
       500,
     );
   }
@@ -84,7 +84,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   if (!response.ok) {
-    let message = `QueueFlow API returned ${response.status}`;
+    let message = `flowforge api returned ${response.status}`;
     try {
       const body = (await response.json()) as APIErrorEnvelope;
       message = body.error?.message || message;

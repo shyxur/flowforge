@@ -1,23 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { SidebarNav } from "@/components/sidebar-nav";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "QueueFlow Dashboard",
-    template: "%s · QueueFlow",
+    default: "flowforge dashboard",
+    template: "%s · flowforge",
   },
-  description: "Operations dashboard for FlowForge QueueFlow.",
+  description: "operations dashboard for flowforge.",
 };
-
-const navigation = [
-  { href: "/", label: "Overview", mark: "O" },
-  { href: "/tasks", label: "Tasks", mark: "T" },
-  { href: "/workers", label: "Workers", mark: "W" },
-  { href: "/dlq", label: "Dead letter", mark: "D" },
-  { href: "/webhooks", label: "Webhooks", mark: "H" },
-  { href: "/webhook-deliveries", label: "Webhook deliveries", mark: "L" },
-];
 
 export default function RootLayout({
   children,
@@ -28,27 +20,17 @@ export default function RootLayout({
         <div className="app-shell">
           <aside className="sidebar">
             <Link className="brand" href="/">
-              <span className="brand-mark">Q</span>
-              <span>
-                <strong>QueueFlow</strong>
-                <small>FlowForge</small>
-              </span>
+              <strong>flowforge</strong>
+              <small>queueflow control plane</small>
             </Link>
 
-            <nav aria-label="Primary navigation" className="nav-list">
-              {navigation.map((item) => (
-                <Link href={item.href} key={item.href}>
-                  <span className="nav-mark">{item.mark}</span>
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
+            <SidebarNav />
 
             <div className="sidebar-foot">
               <span className="status-dot" />
               <span>
-                <strong>Local environment</strong>
-                <small>API connection pending</small>
+                <strong>development</strong>
+                <small>tenant-scoped workspace</small>
               </span>
             </div>
           </aside>
@@ -56,12 +38,11 @@ export default function RootLayout({
           <div className="main-column">
             <header className="topbar">
               <div>
-                <p>Queue operations</p>
-                <span>Development organization</span>
+                <p>operations</p>
+                <span>flowforge control plane</span>
               </div>
               <div className="topbar-actions">
-                <span className="environment-badge">DEV</span>
-                <span className="avatar">DF</span>
+                <span className="environment-badge">development</span>
               </div>
             </header>
             <main className="content">{children}</main>

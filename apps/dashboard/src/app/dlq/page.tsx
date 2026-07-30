@@ -1,16 +1,16 @@
 export default function DLQPage() {
   return (
     <div>
-      <p className="eyebrow">Recovery queue</p>
-      <h1 className="page-title">Dead letter queue</h1>
+      <p className="eyebrow">recovery queue</p>
+      <h1 className="page-title">dead letter queue</h1>
       <p className="page-copy">
-        Inspect exhausted tasks and safely return them to active processing.
+        inspect exhausted tasks and safely return them to active processing.
       </p>
       <section className="panel empty-state">
-        <span className="empty-state-mark">D</span>
-        <h2>No dead letters loaded</h2>
+        <span className="empty-state-mark">04</span>
+        <h2>no dead letters loaded</h2>
         <p>
-          Failed task details and requeue controls will be available from this
+          failed task details and requeue controls will be available from this
           workspace.
         </p>
       </section>

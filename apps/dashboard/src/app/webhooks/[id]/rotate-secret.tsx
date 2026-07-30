@@ -24,7 +24,7 @@ export function RotateSecret({ endpointId }: { endpointId: string }) {
         <p className="eyebrow">signing secret</p>
         <h2>rotate credentials</h2>
         <p>
-          Rotation immediately invalidates signatures generated with the
+          rotation immediately invalidates signatures generated with the
           previous secret.
         </p>
       </div>

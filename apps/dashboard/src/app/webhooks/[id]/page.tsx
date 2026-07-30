@@ -11,7 +11,7 @@ import { deleteWebhookEndpointAction } from "../actions";
 import { EndpointForm } from "./endpoint-form";
 import { RotateSecret } from "./rotate-secret";
 
-export const metadata: Metadata = { title: "Webhook detail" };
+export const metadata: Metadata = { title: "webhook detail" };
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -111,7 +111,7 @@ export default async function WebhookDetailPage({ params }: Props) {
         ) : deliveries.length === 0 ? (
           <section className="panel empty-state compact-empty">
             <h2>no deliveries yet</h2>
-            <p>Matching task events will appear here after they are emitted.</p>
+            <p>matching task events will appear here after they are emitted.</p>
           </section>
         ) : (
           <section className="panel table-panel">

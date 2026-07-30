@@ -7,7 +7,7 @@ import {
 } from "@/lib/queueflow";
 import { WEBHOOK_EVENT_TYPES } from "@/lib/webhook-types";
 
-export const metadata: Metadata = { title: "Webhook deliveries" };
+export const metadata: Metadata = { title: "webhook deliveries" };
 
 type Props = {
   searchParams: Promise<{
@@ -45,7 +45,7 @@ export default async function WebhookDeliveriesPage({ searchParams }: Props) {
       <p className="eyebrow">eventforge</p>
       <h1 className="page-title">webhook deliveries</h1>
       <p className="page-copy">
-        Inspect signed delivery attempts, HTTP outcomes, and scheduled retries.
+        inspect signed delivery attempts, HTTP outcomes, and scheduled retries.
       </p>
 
       <form className="filter-bar panel delivery-filters" method="get">
@@ -95,9 +95,9 @@ export default async function WebhookDeliveriesPage({ searchParams }: Props) {
         </section>
       ) : deliveries.length === 0 ? (
         <section className="panel empty-state">
-          <span className="empty-state-mark">L</span>
+          <span className="empty-state-mark">06</span>
           <h2>no matching deliveries</h2>
-          <p>Adjust the filters or wait for a subscribed task event.</p>
+          <p>adjust the filters or wait for a subscribed task event.</p>
         </section>
       ) : (
         <section className="panel table-panel">

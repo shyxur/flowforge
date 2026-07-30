@@ -9,7 +9,7 @@ import {
   retryTaskAction,
 } from "./actions";
 
-export const metadata: Metadata = { title: "Task detail" };
+export const metadata: Metadata = { title: "task detail" };
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -22,14 +22,14 @@ export default async function TaskDetailPage({ params }: Props) {
     const message =
       caught instanceof QueueFlowAPIError
         ? caught.message
-        : "Unable to load this task.";
+        : "unable to load this task.";
     return (
       <div>
         <Link className="back-link" href="/tasks">
-          ← Back to tasks
+          ← back to tasks
         </Link>
         <section className="panel api-error">
-          <strong>Task unavailable</strong>
+          <strong>task unavailable</strong>
           <p>{message}</p>
         </section>
       </div>
@@ -46,11 +46,11 @@ export default async function TaskDetailPage({ params }: Props) {
     <div>
       <TaskEvents />
       <Link className="back-link" href="/tasks">
-        ← Back to tasks
+        ← back to tasks
       </Link>
       <div className="detail-heading">
         <div>
-          <p className="eyebrow">Task detail</p>
+          <p className="eyebrow">task detail</p>
           <h1 className="task-id-title">{task.id}</h1>
           <div className="detail-subline">
             <StatusBadge status={task.status} />
@@ -61,21 +61,21 @@ export default async function TaskDetailPage({ params }: Props) {
           {canRetry && (
             <form action={retryTaskAction.bind(null, task.id)}>
               <button className="button button-primary" type="submit">
-                Retry task
+                retry task
               </button>
             </form>
           )}
           {canCancel && (
             <form action={cancelTaskAction.bind(null, task.id)}>
               <button className="button button-secondary" type="submit">
-                Cancel
+                cancel
               </button>
             </form>
           )}
           {canDelete && (
             <form action={deleteTaskAction.bind(null, task.id)}>
               <button className="button button-danger" type="submit">
-                Delete
+                delete
               </button>
             </form>
           )}
@@ -84,37 +84,37 @@ export default async function TaskDetailPage({ params }: Props) {
 
       <section className="detail-grid">
         <article className="panel detail-card">
-          <p className="eyebrow">Execution</p>
+          <p className="eyebrow">execution</p>
           <dl className="detail-list">
-            <Detail label="Queue" value={task.queue} />
-            <Detail label="Priority" value={String(task.priority)} />
-            <Detail label="Retry count" value={String(task.attempts)} />
+            <Detail label="queue" value={task.queue} />
+            <Detail label="priority" value={String(task.priority)} />
+            <Detail label="retry count" value={String(task.attempts)} />
             <Detail
-              label="Max retries"
+              label="max retries"
               value={String(Math.max(0, task.max_attempts - 1))}
             />
-            <Detail label="Worker ID" value={task.locked_by || "—"} />
+            <Detail label="worker id" value={task.locked_by || "—"} />
           </dl>
         </article>
         <article className="panel detail-card">
-          <p className="eyebrow">Timing</p>
+          <p className="eyebrow">timing</p>
           <dl className="detail-list">
-            <Detail label="Created" value={formatDate(task.created_at)} />
-            <Detail label="Updated" value={formatDate(task.updated_at)} />
+            <Detail label="created" value={formatDate(task.created_at)} />
+            <Detail label="updated" value={formatDate(task.updated_at)} />
           </dl>
         </article>
       </section>
 
       {task.last_error && (
         <section className="panel error-panel">
-          <p className="eyebrow">Last error</p>
+          <p className="eyebrow">last error</p>
           <pre>{task.last_error}</pre>
         </section>
       )}
 
       <section className="json-grid">
-        <JSONPanel label="Payload" value={task.payload} />
-        <JSONPanel label="Result" value={task.result ?? null} />
+        <JSONPanel label="payload" value={task.payload} />
+        <JSONPanel label="result" value={task.result ?? null} />
       </section>
     </div>
   );
