@@ -147,8 +147,7 @@ development. Webhook URLs must use HTTPS. For local development only, set
 `ALLOW_INSECURE_LOCAL_WEBHOOKS=true` to permit HTTP URLs whose host is localhost
 or a loopback IP.
 
-Delivery execution, signing, and webhook dashboard pages are intentionally not
-part of this milestone.
+Delivery execution and signing run through the EventForge webhook worker.
 
 ## Worker lifecycle
 
@@ -205,6 +204,27 @@ make dashboard
 
 `QUEUEFLOW_API_KEY` is consumed only by Next.js server components and server
 actions. It must never use a `NEXT_PUBLIC_` prefix.
+
+Required dashboard environment variables:
+
+```text
+QUEUEFLOW_API_BASE_URL=http://localhost:8080
+QUEUEFLOW_API_KEY=queueflow-dev-key
+```
+
+EventForge dashboard routes:
+
+```text
+/webhooks
+/webhooks/new
+/webhooks/{id}
+/webhook-deliveries
+/webhook-deliveries/{id}
+```
+
+For local use, start the API and webhook worker with `make up`, then run
+`make dashboard`. Webhook signing secrets appear in the browser only once after
+endpoint creation or rotation; the API key remains server-side.
 
 ### Redis reconstruction
 

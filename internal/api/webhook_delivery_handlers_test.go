@@ -24,6 +24,7 @@ func TestWebhookDeliveryLogsAreFilteredTenantScopedAndRetryable(t *testing.T) {
 			ID: failedID, OrgID: orgID, EndpointID: endpointID,
 			EventType: domain.WebhookEventTaskFailed, Status: domain.WebhookDeliveryFailed,
 			AttemptCount: 5, MaxAttempts: 5, CreatedAt: now, UpdatedAt: now,
+			Payload: []byte(`{"event_id":"failed-event"}`),
 		},
 		deliveredID: {
 			ID: deliveredID, OrgID: orgID, EndpointID: otherEndpointID,
@@ -93,6 +94,9 @@ func TestWebhookDeliveryLogsAreFilteredTenantScopedAndRetryable(t *testing.T) {
 	getResponse := performWebhookRequest(t, orgRouter, http.MethodGet, "/v1/webhooks/deliveries/"+failedID.String(), "")
 	if getResponse.Code != http.StatusOK {
 		t.Fatalf("get status = %d: %s", getResponse.Code, getResponse.Body.String())
+	}
+	if !strings.Contains(getResponse.Body.String(), `"event_id":"failed-event"`) {
+		t.Fatalf("get response omitted payload: %s", getResponse.Body.String())
 	}
 	crossOrgGet := performWebhookRequest(t, otherOrgRouter, http.MethodGet, "/v1/webhooks/deliveries/"+failedID.String(), "")
 	if crossOrgGet.Code != http.StatusNotFound {

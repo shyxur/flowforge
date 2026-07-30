@@ -1,4 +1,20 @@
 import "server-only";
+import type {
+  WebhookDelivery,
+  WebhookDeliveryPage,
+  WebhookEndpoint,
+  WebhookEndpointCreateResult,
+  WebhookEventType,
+} from "./webhook-types";
+
+export type {
+  WebhookDelivery,
+  WebhookDeliveryPage,
+  WebhookDeliveryStatus,
+  WebhookEndpoint,
+  WebhookEndpointCreateResult,
+  WebhookEventType,
+} from "./webhook-types";
 
 export type TaskStatus =
   | "pending"
@@ -114,6 +130,98 @@ export function deleteTask(id: string): Promise<void> {
   return apiFetch<void>(`/v1/tasks/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
+}
+
+export async function listWebhookEndpoints(): Promise<{
+  items: WebhookEndpoint[];
+}> {
+  const result = await apiFetch<{ items: WebhookEndpoint[] }>(
+    "/v1/webhooks/endpoints",
+  );
+  return { items: result.items ?? [] };
+}
+
+export function getWebhookEndpoint(id: string): Promise<WebhookEndpoint> {
+  return apiFetch<WebhookEndpoint>(
+    `/v1/webhooks/endpoints/${encodeURIComponent(id)}`,
+  );
+}
+
+export function createWebhookEndpoint(input: {
+  name: string;
+  url: string;
+  event_types: WebhookEventType[];
+  is_active: boolean;
+}): Promise<WebhookEndpointCreateResult> {
+  return apiFetch<WebhookEndpointCreateResult>("/v1/webhooks/endpoints", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateWebhookEndpoint(
+  id: string,
+  input: {
+    name: string;
+    url: string;
+    event_types: WebhookEventType[];
+    is_active: boolean;
+  },
+): Promise<WebhookEndpoint> {
+  return apiFetch<WebhookEndpoint>(
+    `/v1/webhooks/endpoints/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function deleteWebhookEndpoint(id: string): Promise<void> {
+  return apiFetch<void>(
+    `/v1/webhooks/endpoints/${encodeURIComponent(id)}`,
+    { method: "DELETE" },
+  );
+}
+
+export function rotateWebhookSecret(id: string): Promise<{ secret: string }> {
+  return apiFetch<{ secret: string }>(
+    `/v1/webhooks/endpoints/${encodeURIComponent(id)}/rotate-secret`,
+    { method: "POST" },
+  );
+}
+
+export async function listWebhookDeliveries(filters: {
+  endpoint_id?: string;
+  status?: string;
+  event_type?: string;
+  limit?: number;
+}): Promise<WebhookDeliveryPage> {
+  const query = new URLSearchParams({
+    limit: String(filters.limit ?? 100),
+  });
+  if (filters.endpoint_id) query.set("endpoint_id", filters.endpoint_id);
+  if (filters.status) query.set("status", filters.status);
+  if (filters.event_type) query.set("event_type", filters.event_type);
+  const page = await apiFetch<WebhookDeliveryPage>(
+    `/v1/webhooks/deliveries?${query}`,
+  );
+  return { ...page, items: page.items ?? [] };
+}
+
+export function getWebhookDelivery(id: string): Promise<WebhookDelivery> {
+  return apiFetch<WebhookDelivery>(
+    `/v1/webhooks/deliveries/${encodeURIComponent(id)}`,
+  );
+}
+
+export function retryWebhookDelivery(id: string): Promise<WebhookDelivery> {
+  return apiFetch<WebhookDelivery>(
+    `/v1/webhooks/deliveries/${encodeURIComponent(id)}/retry`,
+    { method: "POST" },
+  );
 }
 
 export async function openTaskEventStream(signal: AbortSignal) {

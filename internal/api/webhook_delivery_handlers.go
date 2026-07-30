@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
@@ -30,6 +31,11 @@ type webhookDeliveryResponse struct {
 	LastError      *string                      `json:"last_error,omitempty"`
 	CreatedAt      time.Time                    `json:"created_at"`
 	UpdatedAt      time.Time                    `json:"updated_at"`
+}
+
+type webhookDeliveryDetailResponse struct {
+	webhookDeliveryResponse
+	Payload json.RawMessage `json:"payload"`
 }
 
 func toWebhookDeliveryResponse(delivery *domain.WebhookDelivery) webhookDeliveryResponse {
@@ -97,7 +103,10 @@ func (h *Handler) GetWebhookDelivery(w http.ResponseWriter, r *http.Request) {
 		h.writeWebhookDeliveryError(w, "get webhook delivery", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, toWebhookDeliveryResponse(delivery))
+	writeJSON(w, http.StatusOK, webhookDeliveryDetailResponse{
+		webhookDeliveryResponse: toWebhookDeliveryResponse(delivery),
+		Payload:                 delivery.Payload,
+	})
 }
 
 func (h *Handler) RetryWebhookDelivery(w http.ResponseWriter, r *http.Request) {

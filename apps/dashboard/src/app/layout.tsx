@@ -15,6 +15,8 @@ const navigation = [
   { href: "/tasks", label: "Tasks", mark: "T" },
   { href: "/workers", label: "Workers", mark: "W" },
   { href: "/dlq", label: "Dead letter", mark: "D" },
+  { href: "/webhooks", label: "Webhooks", mark: "H" },
+  { href: "/webhook-deliveries", label: "Webhook deliveries", mark: "L" },
 ];
 
 export default function RootLayout({

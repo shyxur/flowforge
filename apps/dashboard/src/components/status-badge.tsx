@@ -1,6 +1,4 @@
-import type { TaskStatus } from "@/lib/queueflow";
-
-export function StatusBadge({ status }: { status: TaskStatus }) {
+export function StatusBadge({ status }: { status: string }) {
   return (
     <span className={`task-status status-${status}`}>
       <span />
