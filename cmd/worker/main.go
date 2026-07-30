@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	redisbroker "github.com/shyxur/distributed-task-queue/internal/broker/redis"
 	"github.com/shyxur/distributed-task-queue/internal/config"
 	"github.com/shyxur/distributed-task-queue/internal/domain"
 	"github.com/shyxur/distributed-task-queue/internal/engine"
+	"github.com/shyxur/distributed-task-queue/internal/ports"
 	"github.com/shyxur/distributed-task-queue/internal/storage/postgres"
 	"github.com/shyxur/distributed-task-queue/internal/worker"
 	"go.uber.org/zap"
@@ -39,6 +41,10 @@ func main() {
 
 	cfg := config.Load()
 	ctx := context.Background()
+	orgID, err := uuid.Parse(cfg.OrgID)
+	if err != nil {
+		logger.Fatal("invalid ORG_ID", zap.Error(err))
+	}
 
 	storage, err := postgres.NewPostgresStorage(ctx, cfg.DBDSN)
 	if err != nil {
@@ -58,6 +64,7 @@ func main() {
 
 	workerCfg := domain.WorkerConfig{
 		WorkerID:          fmt.Sprintf("worker-%s", uuid.New().String()[:8]),
+		OrgID:             orgID,
 		Concurrency:       cfg.WorkerConcurrency,
 		RateLimitPerSec:   cfg.RateLimitPerSec,
 		HeartbeatInterval: cfg.HeartbeatInterval,
@@ -70,10 +77,36 @@ func main() {
 	defer stop()
 
 	// Background loops: crashed-worker reclaim + delayed(backoff) promotion.
-	go eng.ReclaimLoop(runCtx, cfg.QueueName, cfg.ReclaimInterval)
-	go eng.DelayedPromotionLoop(runCtx, cfg.QueueName, cfg.PromoteInterval)
+	go eng.ReclaimLoop(runCtx, orgID, cfg.QueueName, cfg.ReclaimInterval)
+	go eng.DelayedPromotionLoop(runCtx, orgID, cfg.QueueName, cfg.PromoteInterval)
+	go eng.ReconciliationLoop(runCtx, orgID, cfg.QueueName, cfg.ReconcileInterval)
+	go workerHeartbeatLoop(runCtx, storage, workerCfg.WorkerID, orgID, cfg.QueueName, cfg.HeartbeatInterval, logger)
 
 	logger.Info("worker starting", zap.String("worker_id", workerCfg.WorkerID), zap.String("queue", cfg.QueueName))
 	pool.Run(runCtx) // blocks until drained after SIGTERM
 	logger.Info("worker exited cleanly")
+}
+
+func workerHeartbeatLoop(ctx context.Context, storage ports.Storage, workerID string, orgID uuid.UUID, queue string, interval time.Duration, logger *zap.Logger) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	send := func() {
+		now := time.Now().UTC()
+		err := storage.UpsertWorkerHeartbeat(ctx, &domain.Worker{
+			ID: workerID, OrgID: orgID, Queue: queue, Status: "online",
+			LastHeartbeatAt: now, CreatedAt: now,
+		})
+		if err != nil {
+			logger.Warn("worker registry heartbeat failed", zap.Error(err))
+		}
+	}
+	send()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			send()
+		}
+	}
 }

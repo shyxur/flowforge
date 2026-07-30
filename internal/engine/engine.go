@@ -43,18 +43,22 @@ type Result struct {
 // locked_by=workerID). Runs the handler under a timeout, then applies
 // retry/backoff/DLQ policy based on outcome.
 func (e *Engine) Execute(ctx context.Context, task *domain.Task, workerID string, handler domain.JobHandler) Result {
-	execCtx, cancel := context.WithTimeout(ctx, e.taskTimeout)
+	timeout := e.taskTimeout
+	if task.TaskTimeout > 0 {
+		timeout = task.TaskTimeout
+	}
+	execCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	err := e.runHandler(execCtx, handler, task.Payload)
 	now := time.Now().UTC()
 
 	if err == nil {
-		if ackErr := e.storage.Complete(ctx, task.ID, now); ackErr != nil {
+		if ackErr := e.storage.Complete(ctx, task.OrgID, task.ID, now); ackErr != nil {
 			e.logger.Error("engine: complete failed", zap.String("task_id", task.ID.String()), zap.Error(ackErr))
 			return Result{TaskID: task.ID, Outcome: "completed", Err: ackErr}
 		}
-		if ackErr := e.broker.Ack(ctx, task.Queue, task.ID); ackErr != nil {
+		if ackErr := e.broker.Ack(ctx, task.OrgID, task.Queue, task.ID); ackErr != nil {
 			e.logger.Warn("engine: broker ack failed (storage already completed)", zap.Error(ackErr))
 		}
 		return Result{TaskID: task.ID, Outcome: "completed"}
@@ -93,11 +97,11 @@ func (e *Engine) handleFailure(ctx context.Context, task *domain.Task, execErr e
 	task.LastError = execErr.Error()
 
 	if task.IsExhausted() {
-		if err := e.storage.MoveToDeadLetter(ctx, task.ID, execErr.Error(), now); err != nil {
+		if err := e.storage.MoveToDeadLetter(ctx, task.OrgID, task.ID, execErr.Error(), now); err != nil {
 			e.logger.Error("engine: move to dlq failed", zap.String("task_id", task.ID.String()), zap.Error(err))
 			return Result{TaskID: task.ID, Outcome: "dead_letter", Err: err}
 		}
-		if err := e.broker.MoveToDeadLetter(ctx, task.Queue, task.ID); err != nil {
+		if err := e.broker.MoveToDeadLetter(ctx, task.OrgID, task.Queue, task.ID); err != nil {
 			e.logger.Warn("engine: broker move to dlq failed", zap.Error(err))
 		}
 		e.logger.Warn("engine: task exhausted, routed to DLQ",
@@ -105,15 +109,17 @@ func (e *Engine) handleFailure(ctx context.Context, task *domain.Task, execErr e
 		return Result{TaskID: task.ID, Outcome: "dead_letter", Err: execErr}
 	}
 
-	backoff := e.retryPolicy.NextBackoff(task.Attempts)
+	backoff := e.nextBackoff(task)
 	visibleAt := now.Add(backoff)
 
-	if err := e.storage.Fail(ctx, task.ID, execErr.Error(), domain.StatusPending, visibleAt, now); err != nil {
+	if err := e.storage.Fail(ctx, task.OrgID, task.ID, execErr.Error(), domain.StatusPending, visibleAt, now); err != nil {
 		e.logger.Error("engine: fail update failed", zap.String("task_id", task.ID.String()), zap.Error(err))
 		return Result{TaskID: task.ID, Outcome: "retried", Err: err}
 	}
-	if err := e.broker.Nack(ctx, task.Queue, task.ID, backoff); err != nil {
+	if err := e.broker.Nack(ctx, task.OrgID, task.Queue, task.ID, backoff); err != nil {
 		e.logger.Warn("engine: broker nack failed", zap.Error(err))
+	} else if err := e.storage.MarkDispatched(ctx, task.OrgID, task.ID, now); err != nil {
+		e.logger.Warn("engine: retry dispatch marker failed", zap.Error(err))
 	}
 
 	e.logger.Info("engine: task retry scheduled",
@@ -121,9 +127,24 @@ func (e *Engine) handleFailure(ctx context.Context, task *domain.Task, execErr e
 	return Result{TaskID: task.ID, Outcome: "retried", Err: execErr}
 }
 
+func (e *Engine) nextBackoff(task *domain.Task) time.Duration {
+	switch task.BackoffStrategy {
+	case "fixed":
+		return e.retryPolicy.InitialBackoff
+	case "linear":
+		backoff := time.Duration(task.Attempts) * e.retryPolicy.InitialBackoff
+		if backoff > e.retryPolicy.MaxBackoff {
+			return e.retryPolicy.MaxBackoff
+		}
+		return backoff
+	default:
+		return e.retryPolicy.NextBackoff(task.Attempts)
+	}
+}
+
 // ReclaimLoop periodically scans for crashed-worker tasks (visibility
 // expired) and re-enqueues them on the broker.
-func (e *Engine) ReclaimLoop(ctx context.Context, queue string, interval time.Duration) {
+func (e *Engine) ReclaimLoop(ctx context.Context, orgID uuid.UUID, queue string, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -131,7 +152,7 @@ func (e *Engine) ReclaimLoop(ctx context.Context, queue string, interval time.Du
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			reclaimed, err := e.storage.ReclaimExpired(ctx, queue, time.Now().UTC(), 100)
+			reclaimed, err := e.storage.ReclaimExpired(ctx, orgID, queue, time.Now().UTC(), 100)
 			if err != nil {
 				e.logger.Error("engine: reclaim scan failed", zap.Error(err))
 				continue
@@ -139,6 +160,10 @@ func (e *Engine) ReclaimLoop(ctx context.Context, queue string, interval time.Du
 			for _, t := range reclaimed {
 				if err := e.broker.Enqueue(ctx, t); err != nil {
 					e.logger.Error("engine: reclaim re-enqueue failed", zap.String("task_id", t.ID.String()), zap.Error(err))
+					continue
+				}
+				if err := e.storage.MarkDispatched(ctx, t.OrgID, t.ID, time.Now().UTC()); err != nil {
+					e.logger.Warn("engine: reclaim dispatch marker failed", zap.Error(err))
 				}
 			}
 			if len(reclaimed) > 0 {
@@ -150,7 +175,7 @@ func (e *Engine) ReclaimLoop(ctx context.Context, queue string, interval time.Du
 
 // DelayedPromotionLoop periodically promotes due delayed (backoff) tasks
 // from the broker's delayed set back to the active pending queue.
-func (e *Engine) DelayedPromotionLoop(ctx context.Context, queue string, interval time.Duration) {
+func (e *Engine) DelayedPromotionLoop(ctx context.Context, orgID uuid.UUID, queue string, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -158,13 +183,41 @@ func (e *Engine) DelayedPromotionLoop(ctx context.Context, queue string, interva
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			n, err := e.broker.PromoteDueDelayed(ctx, queue)
+			n, err := e.broker.PromoteDueDelayed(ctx, orgID, queue)
 			if err != nil {
 				e.logger.Error("engine: promote delayed failed", zap.Error(err))
 				continue
 			}
 			if n > 0 {
 				e.logger.Debug("engine: promoted delayed tasks", zap.Int("count", n))
+			}
+		}
+	}
+}
+
+// ReconciliationLoop repairs the Postgres-commit/Redis-enqueue gap. Duplicate
+// dispatch is acceptable because claiming remains authoritative in Postgres.
+func (e *Engine) ReconciliationLoop(ctx context.Context, orgID uuid.UUID, queue string, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			tasks, err := e.storage.ListUndispatchedPending(ctx, orgID, queue, 100)
+			if err != nil {
+				e.logger.Error("engine: reconciliation scan failed", zap.Error(err))
+				continue
+			}
+			for _, task := range tasks {
+				if err := e.broker.Enqueue(ctx, task); err != nil {
+					e.logger.Warn("engine: reconciliation enqueue failed", zap.Error(err))
+					continue
+				}
+				if err := e.storage.MarkDispatched(ctx, orgID, task.ID, time.Now().UTC()); err != nil {
+					e.logger.Warn("engine: reconciliation dispatch marker failed", zap.Error(err))
+				}
 			}
 		}
 	}

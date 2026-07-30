@@ -9,6 +9,7 @@ import (
 	redisbroker "github.com/shyxur/distributed-task-queue/internal/broker/redis"
 	"github.com/shyxur/distributed-task-queue/internal/config"
 	"github.com/shyxur/distributed-task-queue/internal/storage/postgres"
+	"github.com/shyxur/distributed-task-queue/internal/usecase"
 	"go.uber.org/zap"
 )
 
@@ -29,8 +30,10 @@ func main() {
 	defer broker.Close()
 
 	limiter := redisbroker.NewTokenBucketLimiter(broker.Client(), 2, 5)
-    handler := api.NewHandler(storage, broker, logger)
-    router := api.NewRouter(handler, limiter, logger)
+	service := usecase.NewService(storage, broker)
+	auth := usecase.NewAuthService(storage)
+	handler := api.NewHandler(service, logger)
+	router := api.NewRouter(handler, auth, limiter, logger)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.HTTPPort,

@@ -21,6 +21,8 @@ type Config struct {
 	ReclaimInterval   time.Duration
 	PromoteInterval   time.Duration
 	QueueName         string
+	OrgID             string
+	ReconcileInterval time.Duration
 }
 
 func Load() *Config {
@@ -42,6 +44,8 @@ func Load() *Config {
 	v.SetDefault("RECLAIM_INTERVAL_SEC", 15)
 	v.SetDefault("PROMOTE_INTERVAL_SEC", 5)
 	v.SetDefault("QUEUE_NAME", "default")
+	v.SetDefault("ORG_ID", "00000000-0000-4000-8000-000000000001")
+	v.SetDefault("RECONCILE_INTERVAL_SEC", 10)
 
 	return &Config{
 		DBDSN:             v.GetString("DB_DSN"),
@@ -58,5 +62,7 @@ func Load() *Config {
 		ReclaimInterval:   time.Duration(v.GetInt("RECLAIM_INTERVAL_SEC")) * time.Second,
 		PromoteInterval:   time.Duration(v.GetInt("PROMOTE_INTERVAL_SEC")) * time.Second,
 		QueueName:         v.GetString("QUEUE_NAME"),
+		OrgID:             v.GetString("ORG_ID"),
+		ReconcileInterval: time.Duration(v.GetInt("RECONCILE_INTERVAL_SEC")) * time.Second,
 	}
 }

@@ -14,6 +14,10 @@ var (
 	ErrShutdownInProgress      = errors.New("worker is shutting down, rejecting new work")
 	ErrRateLimitExceeded       = errors.New("rate limit exceeded for worker")
 	ErrInvalidInput            = errors.New("invalid input parameters")
+	ErrIdempotencyConflict     = errors.New("idempotency key reused with a different request")
+	ErrInvalidStateTransition  = errors.New("invalid task state transition")
+	ErrUnauthorized            = errors.New("unauthorized")
+	ErrDispatchUnavailable     = errors.New("task persisted but broker dispatch is unavailable")
 )
 
 // RetryableError wraps an error to signal engine should retry.

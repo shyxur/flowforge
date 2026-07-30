@@ -48,6 +48,7 @@ services:
     environment:
       - DB_DSN=postgres://taskqueue:taskqueue@postgres:5432/taskqueue?sslmode=disable
       - REDIS_ADDR=redis:6379
+      - ORG_ID=00000000-0000-4000-8000-000000000001
     ports:
       - "8080:8080"
 
@@ -64,6 +65,7 @@ services:
       - REDIS_ADDR=redis:6379
       - WORKER_CONCURRENCY=10
       - QUEUE_NAME=default
+      - ORG_ID=00000000-0000-4000-8000-000000000001
     deploy:
       replicas: 2
 
@@ -80,6 +82,7 @@ services:
       - REDIS_ADDR=redis:6379
       - WORKER_CONCURRENCY=10
       - QUEUE_NAME=email
+      - ORG_ID=00000000-0000-4000-8000-000000000001
     deploy:
       replicas: 2
 

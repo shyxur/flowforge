@@ -16,20 +16,27 @@ const (
 	StatusCompleted  TaskStatus = "completed"
 	StatusFailed     TaskStatus = "failed"
 	StatusDeadLetter TaskStatus = "dead_letter"
+	StatusCancelled  TaskStatus = "cancelled"
 )
 
 // Task is the core domain entity. Storage/broker layers map to/from this;
 // it must not import infra packages (clean architecture boundary).
 type Task struct {
-	ID             uuid.UUID       `json:"id"`
-	Queue          string          `json:"queue"`
-	Payload        json.RawMessage `json:"payload"`
-	Status         TaskStatus      `json:"status"`
-	IdempotencyKey string          `json:"idempotency_key,omitempty"` // dedupe guard
+	ID                 uuid.UUID       `json:"id"`
+	OrgID              uuid.UUID       `json:"org_id"`
+	Queue              string          `json:"queue"`
+	Payload            json.RawMessage `json:"payload"`
+	Status             TaskStatus      `json:"status"`
+	IdempotencyKey     string          `json:"-"` // accepted from the header, never echoed
+	RequestFingerprint string          `json:"-"`
+	Priority           int             `json:"priority"`
+	BackoffStrategy    string          `json:"backoff_strategy"`
+	TraceID            string          `json:"trace_id,omitempty"`
 
 	// Retry/backoff control
-	Attempts    int `json:"attempts"`
-	MaxAttempts int `json:"max_attempts"`
+	Attempts    int           `json:"attempts"`
+	MaxAttempts int           `json:"max_attempts"`
+	TaskTimeout time.Duration `json:"-"`
 
 	// Visibility timeout: task invisible to other workers until this expires
 	VisibilityTimeout time.Duration `json:"visibility_timeout"`
@@ -39,24 +46,29 @@ type Task struct {
 	LockedBy        string     `json:"locked_by,omitempty"`
 	LastHeartbeatAt *time.Time `json:"last_heartbeat_at,omitempty"`
 
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	ScheduledAt time.Time  `json:"scheduled_at"` // supports delayed execution
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	ScheduledAt  time.Time  `json:"scheduled_at"` // supports delayed execution
+	CompletedAt  *time.Time `json:"completed_at,omitempty"`
+	DeletedAt    *time.Time `json:"deleted_at,omitempty"`
+	DispatchedAt *time.Time `json:"-"`
 
 	LastError string `json:"last_error,omitempty"`
 }
 
 // NewTask constructs a task with sane defaults. Business rules (validation)
 // belong here, not in handlers/repositories.
-func NewTask(queue string, payload json.RawMessage, idempotencyKey string, maxAttempts int, visibilityTimeout time.Duration) *Task {
+func NewTask(orgID uuid.UUID, queue string, payload json.RawMessage, idempotencyKey, requestFingerprint string, maxAttempts int, visibilityTimeout time.Duration) *Task {
 	now := time.Now().UTC()
 	return &Task{
 		ID:                 uuid.New(),
+		OrgID:              orgID,
 		Queue:              queue,
 		Payload:            payload,
 		Status:             StatusPending,
 		IdempotencyKey:     idempotencyKey,
+		RequestFingerprint: requestFingerprint,
+		BackoffStrategy:    "exponential",
 		Attempts:           0,
 		MaxAttempts:        maxAttempts,
 		VisibilityTimeout:  visibilityTimeout,
@@ -64,6 +76,15 @@ func NewTask(queue string, payload json.RawMessage, idempotencyKey string, maxAt
 		CreatedAt:          now,
 		UpdatedAt:          now,
 		ScheduledAt:        now,
+	}
+}
+
+func (t *Task) IsTerminal() bool {
+	switch t.Status {
+	case StatusCompleted, StatusFailed, StatusDeadLetter, StatusCancelled:
+		return true
+	default:
+		return false
 	}
 }
 

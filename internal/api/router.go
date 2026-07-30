@@ -2,57 +2,36 @@ package api
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/shyxur/distributed-task-queue/internal/ports"
 	"go.uber.org/zap"
 )
 
-func NewRouter(h *Handler, limiter ports.RateLimiter, logger *zap.Logger) http.Handler {
-    mux := http.NewServeMux()
+func NewRouter(h *Handler, auth Authenticator, limiter ports.RateLimiter, logger *zap.Logger) http.Handler {
+	public := http.NewServeMux()
+	public.HandleFunc("GET /healthz", h.Health)
+	public.HandleFunc("GET /readyz", h.Ready)
 
-	mux.HandleFunc("GET /health", h.Health)
-	mux.HandleFunc("POST /tasks", h.CreateTask)
+	v1 := http.NewServeMux()
+	v1.HandleFunc("POST /v1/tasks", h.CreateTask)
+	v1.HandleFunc("GET /v1/tasks", h.ListTasks)
+	v1.HandleFunc("GET /v1/tasks/{id}", h.GetTask)
+	v1.HandleFunc("POST /v1/tasks/{id}/retry", h.RetryTask)
+	v1.HandleFunc("POST /v1/tasks/{id}/cancel", h.CancelTask)
+	v1.HandleFunc("DELETE /v1/tasks/{id}", h.DeleteTask)
+	v1.HandleFunc("GET /v1/queues/{name}/stats", h.QueueStats)
+	v1.HandleFunc("GET /v1/workers", h.ListWorkers)
+	v1.HandleFunc("POST /v1/workers/{id}/heartbeat", h.WorkerHeartbeat)
+	v1.HandleFunc("GET /v1/dlq", h.ListDLQ)
+	v1.HandleFunc("POST /v1/dlq/{id}/requeue", h.RequeueDLQ)
 
-	mux.HandleFunc("/tasks/", func(w http.ResponseWriter, r *http.Request) {
-		path := strings.TrimPrefix(r.URL.Path, "/tasks/")
-		if path == "" {
-			http.NotFound(w, r)
-			return
-		}
+	var protected http.Handler = v1
+	protected = RateLimitMiddleware(limiter)(protected)
+	protected = AuthMiddleware(auth)(protected)
+	public.Handle("/v1/", protected)
 
-		parts := strings.Split(path, "/")
-		if len(parts) == 1 {
-			if r.Method == http.MethodGet {
-				h.GetTask(w, r, parts[0])
-				return
-			}
-		} else if len(parts) == 2 && parts[1] == "requeue" {
-			if r.Method == http.MethodPost {
-				h.RequeueDeadLetter(w, r, parts[0])
-				return
-			}
-		}
-
-		http.NotFound(w, r)
-	})
-
-	mux.HandleFunc("/queues/", func(w http.ResponseWriter, r *http.Request) {
-		path := strings.TrimPrefix(r.URL.Path, "/queues/")
-		parts := strings.Split(path, "/")
-
-		if len(parts) == 2 && parts[1] == "dlq" && r.Method == http.MethodGet {
-			h.ListDeadLetter(w, r, parts[0])
-			return
-		}
-
-		http.NotFound(w, r)
-	})
-
-	var handler http.Handler = mux
-	handler = RateLimitMiddleware(limiter)(handler)
+	var handler http.Handler = public
 	handler = LoggingMiddleware(logger)(handler)
 	handler = RecoveryMiddleware(logger)(handler)
-
 	return handler
 }

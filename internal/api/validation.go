@@ -1,33 +1,44 @@
 package api
 
 import (
-	"errors"
-	"fmt"
+	"strings"
 
-	"github.com/go-playground/validator/v10"
+	"github.com/shyxur/distributed-task-queue/internal/domain"
 )
 
-var validate = validator.New()
-
-func validateRequest(req *createTaskRequest) map[string]string {
-	// Payload kontrolü
+func validateCreateTask(req createTaskRequest) map[string]any {
+	details := make(map[string]any)
+	if strings.TrimSpace(req.Queue) == "" || len(req.Queue) > 64 {
+		details["queue"] = "must be between 1 and 64 characters"
+	}
 	if len(req.Payload) == 0 || string(req.Payload) == "null" {
-		return map[string]string{"payload": "payload is required"}
+		details["payload"] = "is required"
 	}
-
-	err := validate.Struct(req)
-	if err == nil {
-		return nil
+	if req.Priority < 0 || req.Priority > 9 {
+		details["priority"] = "must be between 0 and 9"
 	}
-
-	var ve validator.ValidationErrors
-	if errors.As(err, &ve) {
-		out := make(map[string]string)
-		for _, fe := range ve {
-			out[fe.Field()] = fmt.Sprintf("failed on tag: %s", fe.Tag())
-		}
-		return out
+	if req.MaxRetries != nil && (*req.MaxRetries < 0 || *req.MaxRetries > 99) {
+		details["max_retries"] = "must be between 0 and 99"
 	}
+	if req.TimeoutSeconds < 0 || req.TimeoutSeconds > 86400 {
+		details["timeout_seconds"] = "must be between 1 and 86400"
+	}
+	if req.VisibilityTimeoutSeconds < 0 || req.VisibilityTimeoutSeconds > 86400 {
+		details["visibility_timeout_seconds"] = "must be between 1 and 86400"
+	}
+	if req.BackoffStrategy != "" && req.BackoffStrategy != "exponential" &&
+		req.BackoffStrategy != "linear" && req.BackoffStrategy != "fixed" {
+		details["backoff_strategy"] = "must be exponential, linear, or fixed"
+	}
+	return details
+}
 
-	return map[string]string{"error": err.Error()}
+func validStatus(status domain.TaskStatus) bool {
+	switch status {
+	case domain.StatusPending, domain.StatusProcessing, domain.StatusCompleted,
+		domain.StatusFailed, domain.StatusDeadLetter, domain.StatusCancelled:
+		return true
+	default:
+		return false
+	}
 }

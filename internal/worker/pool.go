@@ -16,19 +16,19 @@ import (
 // one queue, with rate limiting, heartbeating in-flight tasks, and
 // graceful shutdown (drains in-flight work, rejects new dequeues).
 type Pool struct {
-	cfg      domain.WorkerConfig
-	queue    string
-	broker   ports.Broker
-	storage  ports.Storage
-	engine   *engine.Engine
-	handler  domain.JobHandler
-	limiter  ports.RateLimiter
-	logger   *zap.Logger
+	cfg     domain.WorkerConfig
+	queue   string
+	broker  ports.Broker
+	storage ports.Storage
+	engine  *engine.Engine
+	handler domain.JobHandler
+	limiter ports.RateLimiter
+	logger  *zap.Logger
 
-	sem       chan struct{}    // concurrency gate
-	inFlight  sync.Map         // taskID -> context.CancelFunc (for heartbeat-loss cancellation)
-	wg        sync.WaitGroup
-	shutdown  chan struct{}
+	sem          chan struct{} // concurrency gate
+	inFlight     sync.Map      // taskID -> context.CancelFunc (for heartbeat-loss cancellation)
+	wg           sync.WaitGroup
+	shutdown     chan struct{}
 	shutdownOnce sync.Once
 }
 
@@ -53,7 +53,7 @@ func NewPool(cfg domain.WorkerConfig, queue string, broker ports.Broker, storage
 func (p *Pool) Run(ctx context.Context) {
 	p.logger.Info("worker pool starting", zap.String("queue", p.queue), zap.String("worker_id", p.cfg.WorkerID), zap.Int("concurrency", p.cfg.Concurrency))
 
-	dispatchLoop:
+dispatchLoop:
 	for {
 		select {
 		case <-ctx.Done():
@@ -63,7 +63,8 @@ func (p *Pool) Run(ctx context.Context) {
 
 		// Rate limit before even attempting a dequeue — backpressure at the source.
 		if p.limiter != nil {
-			if err := p.limiter.Wait(ctx, p.cfg.WorkerID); err != nil {
+			rateLimitKey := "org:" + p.cfg.OrgID.String() + ":queue:" + p.queue
+			if err := p.limiter.Wait(ctx, rateLimitKey); err != nil {
 				if ctx.Err() != nil {
 					break dispatchLoop
 				}
@@ -79,7 +80,7 @@ func (p *Pool) Run(ctx context.Context) {
 			break dispatchLoop
 		}
 
-		taskID, err := p.broker.Dequeue(ctx, p.queue, 2*time.Second)
+		taskID, err := p.broker.Dequeue(ctx, p.cfg.OrgID, p.queue, 2*time.Second)
 		if err != nil {
 			<-p.sem // release slot, nothing to do
 			if ctx.Err() != nil {
@@ -111,9 +112,12 @@ func (p *Pool) process(parentCtx context.Context, taskID uuid.UUID) {
 	}()
 
 	now := time.Now().UTC()
-	task, err := p.storage.ClaimForProcessing(taskCtx, taskID, p.cfg.WorkerID, now)
+	task, err := p.storage.ClaimForProcessing(taskCtx, p.cfg.OrgID, taskID, p.cfg.WorkerID, now)
 	if err != nil {
 		p.logger.Warn("worker: claim failed", zap.String("task_id", taskID.String()), zap.Error(err))
+		if ackErr := p.broker.Ack(taskCtx, p.cfg.OrgID, p.queue, taskID); ackErr != nil {
+			p.logger.Warn("worker: stale broker message cleanup failed", zap.Error(ackErr))
+		}
 		return
 	}
 
@@ -141,7 +145,7 @@ func (p *Pool) heartbeatLoop(ctx context.Context, task *domain.Task) {
 			return
 		case <-ticker.C:
 			now := time.Now().UTC()
-			err := p.storage.Heartbeat(ctx, task.ID, p.cfg.WorkerID, task.VisibilityTimeout, now)
+			err := p.storage.Heartbeat(ctx, task.OrgID, task.ID, p.cfg.WorkerID, task.VisibilityTimeout, now)
 			if err != nil {
 				p.logger.Error("worker: heartbeat lost ownership, cancelling task",
 					zap.String("task_id", task.ID.String()), zap.Error(err))

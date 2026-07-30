@@ -1,167 +1,357 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/shyxur/distributed-task-queue/internal/domain"
-	"github.com/shyxur/distributed-task-queue/internal/ports"
+	"github.com/shyxur/distributed-task-queue/internal/usecase"
 	"go.uber.org/zap"
 )
 
+const (
+	maxPayloadBytes     = 256 * 1024
+	maxRequestBodyBytes = maxPayloadBytes + 16*1024
+)
+
+type TaskService interface {
+	CreateTask(ctx context.Context, input usecase.CreateTaskInput) (*domain.Task, bool, error)
+	GetTask(ctx context.Context, orgID, id uuid.UUID) (*domain.Task, error)
+	ListTasks(ctx context.Context, orgID uuid.UUID, filter domain.TaskFilter) (*domain.TaskPage, error)
+	RetryTask(ctx context.Context, orgID, id uuid.UUID) (*domain.Task, error)
+	CancelTask(ctx context.Context, orgID, id uuid.UUID) (*domain.Task, error)
+	SoftDeleteTask(ctx context.Context, orgID, id uuid.UUID) error
+	QueueStats(ctx context.Context, orgID uuid.UUID, queue string) (*domain.QueueStats, error)
+	ListDLQ(ctx context.Context, orgID uuid.UUID, queue, cursor string, limit int) (*domain.TaskPage, error)
+	RequeueDLQ(ctx context.Context, orgID, id uuid.UUID) (*domain.Task, error)
+	ListWorkers(ctx context.Context, orgID uuid.UUID) ([]*domain.Worker, error)
+	WorkerHeartbeat(ctx context.Context, worker *domain.Worker) error
+	Ready(ctx context.Context) error
+}
+
 type Handler struct {
-	storage ports.Storage
-	broker  ports.Broker
+	service TaskService
 	logger  *zap.Logger
 }
 
-func NewHandler(storage ports.Storage, broker ports.Broker, logger *zap.Logger) *Handler {
-	return &Handler{storage: storage, broker: broker, logger: logger}
+func NewHandler(service TaskService, logger *zap.Logger) *Handler {
+	return &Handler{service: service, logger: logger}
 }
 
 type createTaskRequest struct {
-	Queue string `json:"queue" validate:"required,max=64"`
-	Payload            json.RawMessage `json:"payload" validate:"required"`
-	IdempotencyKey     string          `json:"idempotency_key,omitempty" validate:"omitempty,max=128"`
-	MaxAttempts        int             `json:"max_attempts,omitempty" validate:"omitempty,gte=1,lte=100"`
-	VisibilityTimeoutS int             `json:"visibility_timeout_sec,omitempty" validate:"omitempty,gte=1,lte=86400"`
+	Queue                    string          `json:"queue"`
+	Payload                  json.RawMessage `json:"payload"`
+	Priority                 int             `json:"priority"`
+	MaxRetries               *int            `json:"max_retries"`
+	TimeoutSeconds           int             `json:"timeout_seconds"`
+	VisibilityTimeoutSeconds int             `json:"visibility_timeout_seconds"`
+	ScheduledAt              *time.Time      `json:"scheduled_at"`
+	BackoffStrategy          string          `json:"backoff_strategy"`
 }
 
-type createTaskResponse struct {
-	ID     uuid.UUID `json:"id"`
-	Status string    `json:"status"`
+type taskResponse struct {
+	ID        uuid.UUID         `json:"id"`
+	Status    domain.TaskStatus `json:"status"`
+	Queue     string            `json:"queue"`
+	CreatedAt time.Time         `json:"created_at"`
+}
+
+func toTaskResponse(task *domain.Task) taskResponse {
+	return taskResponse{ID: task.ID, Status: task.Status, Queue: task.Queue, CreatedAt: task.CreatedAt}
 }
 
 func (h *Handler) CreateTask(w http.ResponseWriter, r *http.Request) {
+	idempotencyKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	if idempotencyKey == "" {
+		writeAPIError(w, http.StatusBadRequest, "missing_idempotency_key", "Idempotency-Key header is required", nil)
+		return
+	}
+	if len(idempotencyKey) > 255 {
+		writeAPIError(w, http.StatusBadRequest, "invalid_idempotency_key", "Idempotency-Key must not exceed 255 characters", nil)
+		return
+	}
+
 	var req createTaskRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json body")
-		return
-	}
-
-	if errs := validateRequest(&req); errs != nil {
-        writeJSON(w, http.StatusBadRequest, map[string]any{
-            "error":   "validation failed",
-            "details": errs,
-        })
-        return
-    }
-	
-	if req.MaxAttempts <= 0 {
-		req.MaxAttempts = domain.DefaultRetryPolicy().MaxAttempts
-	}
-	visTimeout := 30 * time.Second
-	if req.VisibilityTimeoutS > 0 {
-		visTimeout = time.Duration(req.VisibilityTimeoutS) * time.Second
-	}
-
-	if req.IdempotencyKey != "" {
-		existing, err := h.storage.FindByIdempotencyKey(r.Context(), req.Queue, req.IdempotencyKey)
-		if err == nil {
-			writeJSON(w, http.StatusOK, createTaskResponse{ID: existing.ID, Status: string(existing.Status)})
+	if err := decodeJSON(w, r, &req); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			writeAPIError(w, http.StatusRequestEntityTooLarge, "request_too_large", "request body is too large", nil)
 			return
 		}
-		if !errors.Is(err, domain.ErrTaskNotFound) {
-			h.logger.Error("create task: idempotency lookup failed", zap.Error(err))
-			writeError(w, http.StatusInternalServerError, "internal error")
+		writeAPIError(w, http.StatusBadRequest, "invalid_json", "request body must be a single valid JSON object", nil)
+		return
+	}
+	if len(req.Payload) > maxPayloadBytes {
+		writeAPIError(w, http.StatusRequestEntityTooLarge, "payload_too_large", "payload must not exceed 262144 bytes", nil)
+		return
+	}
+	if details := validateCreateTask(req); len(details) > 0 {
+		writeAPIError(w, http.StatusBadRequest, "validation_failed", "request validation failed", details)
+		return
+	}
+
+	maxRetries := 4
+	if req.MaxRetries != nil {
+		maxRetries = *req.MaxRetries
+	}
+	if req.TimeoutSeconds == 0 {
+		req.TimeoutSeconds = 60
+	}
+	if req.VisibilityTimeoutSeconds == 0 {
+		req.VisibilityTimeoutSeconds = 30
+	}
+	if req.BackoffStrategy == "" {
+		req.BackoffStrategy = "exponential"
+	}
+	principal := MustPrincipal(r.Context())
+	task, replay, err := h.service.CreateTask(r.Context(), usecase.CreateTaskInput{
+		OrgID: principal.OrgID, IdempotencyKey: idempotencyKey, Queue: req.Queue,
+		Payload: req.Payload, Priority: req.Priority, MaxRetries: maxRetries,
+		Timeout:           time.Duration(req.TimeoutSeconds) * time.Second,
+		VisibilityTimeout: time.Duration(req.VisibilityTimeoutSeconds) * time.Second,
+		ScheduledAt:       req.ScheduledAt, BackoffStrategy: req.BackoffStrategy,
+		TraceID: r.Header.Get("Trace-Id"),
+	})
+	if err != nil {
+		if errors.Is(err, domain.ErrIdempotencyConflict) {
+			writeAPIError(w, http.StatusConflict, "idempotency_conflict", "Idempotency-Key was already used for a different request", nil)
 			return
 		}
-	}
-
-	task := domain.NewTask(req.Queue, req.Payload, req.IdempotencyKey, req.MaxAttempts, visTimeout)
-
-	if err := h.storage.Create(r.Context(), task); err != nil {
-		if errors.Is(err, domain.ErrDuplicateIdempotencyKey) {
-			existing, findErr := h.storage.FindByIdempotencyKey(r.Context(), req.Queue, req.IdempotencyKey)
-			if findErr == nil {
-				writeJSON(w, http.StatusOK, createTaskResponse{ID: existing.ID, Status: string(existing.Status)})
-				return
-			}
+		if errors.Is(err, domain.ErrDispatchUnavailable) {
+			writeAPIError(w, http.StatusServiceUnavailable, "dispatch_unavailable", "task was persisted and will be dispatched by reconciliation", map[string]any{"task_id": task.ID})
+			return
 		}
-		h.logger.Error("create task: storage create failed", zap.Error(err))
-		writeError(w, http.StatusInternalServerError, "internal error")
+		h.internalError(w, "create task", err)
 		return
 	}
-
-	if err := h.broker.Enqueue(r.Context(), task); err != nil {
-		h.logger.Error("create task: broker enqueue failed", zap.String("task_id", task.ID.String()), zap.Error(err))
-		writeError(w, http.StatusInternalServerError, "task persisted but enqueue failed, will be retried by reclaim scan")
-		return
+	status := http.StatusCreated
+	if replay {
+		status = http.StatusOK
 	}
-
-	writeJSON(w, http.StatusCreated, createTaskResponse{ID: task.ID, Status: string(task.Status)})
+	writeJSON(w, status, toTaskResponse(task))
 }
 
-func (h *Handler) GetTask(w http.ResponseWriter, r *http.Request, id string) {
-	taskID, err := uuid.Parse(id)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid task id format")
+func (h *Handler) GetTask(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseTaskID(w, r.PathValue("id"))
+	if !ok {
 		return
 	}
-	task, err := h.storage.GetByID(r.Context(), taskID)
-	if errors.Is(err, domain.ErrTaskNotFound) {
-		writeError(w, http.StatusNotFound, "task not found")
-		return
-	}
+	task, err := h.service.GetTask(r.Context(), MustPrincipal(r.Context()).OrgID, id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		h.writeDomainError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, task)
 }
 
-func (h *Handler) ListDeadLetter(w http.ResponseWriter, r *http.Request, queue string) {
+func (h *Handler) ListTasks(w http.ResponseWriter, r *http.Request) {
+	limit, ok := parseLimit(w, r.URL.Query().Get("limit"))
+	if !ok {
+		return
+	}
+	status := domain.TaskStatus(r.URL.Query().Get("status"))
+	if status != "" && !validStatus(status) {
+		writeAPIError(w, http.StatusBadRequest, "invalid_status", "unsupported task status", nil)
+		return
+	}
+	page, err := h.service.ListTasks(r.Context(), MustPrincipal(r.Context()).OrgID, domain.TaskFilter{
+		Queue: r.URL.Query().Get("queue"), Status: status,
+		Cursor: r.URL.Query().Get("cursor"), Limit: limit,
+	})
+	if err != nil {
+		h.writeDomainError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, page)
+}
+
+func (h *Handler) RetryTask(w http.ResponseWriter, r *http.Request) {
+	h.taskMutation(w, r, h.service.RetryTask)
+}
+
+func (h *Handler) CancelTask(w http.ResponseWriter, r *http.Request) {
+	h.taskMutation(w, r, h.service.CancelTask)
+}
+
+func (h *Handler) DeleteTask(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseTaskID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	err := h.service.SoftDeleteTask(r.Context(), MustPrincipal(r.Context()).OrgID, id)
+	if err != nil {
+		h.writeDomainError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) QueueStats(w http.ResponseWriter, r *http.Request) {
+	queue := strings.TrimSpace(r.PathValue("name"))
 	if queue == "" {
-		writeError(w, http.StatusBadRequest, "queue name is required")
+		writeAPIError(w, http.StatusBadRequest, "invalid_queue", "queue is required", nil)
 		return
 	}
-	tasks, err := h.storage.ListDeadLetter(r.Context(), queue, 50, 0)
+	stats, err := h.service.QueueStats(r.Context(), MustPrincipal(r.Context()).OrgID, queue)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
+		h.internalError(w, "queue stats", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, tasks)
+	writeJSON(w, http.StatusOK, stats)
 }
 
-func (h *Handler) RequeueDeadLetter(w http.ResponseWriter, r *http.Request, id string) {
-	taskID, err := uuid.Parse(id)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid task id format")
+func (h *Handler) ListDLQ(w http.ResponseWriter, r *http.Request) {
+	limit, ok := parseLimit(w, r.URL.Query().Get("limit"))
+	if !ok {
 		return
 	}
-	if err := h.storage.Requeue(r.Context(), taskID, time.Now().UTC()); err != nil {
-		if errors.Is(err, domain.ErrTaskNotFound) {
-			writeError(w, http.StatusNotFound, "task not found")
-			return
+	page, err := h.service.ListDLQ(r.Context(), MustPrincipal(r.Context()).OrgID,
+		r.URL.Query().Get("queue"), r.URL.Query().Get("cursor"), limit)
+	if err != nil {
+		h.writeDomainError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, page)
+}
+
+func (h *Handler) RequeueDLQ(w http.ResponseWriter, r *http.Request) {
+	h.taskMutation(w, r, h.service.RequeueDLQ)
+}
+
+func (h *Handler) ListWorkers(w http.ResponseWriter, r *http.Request) {
+	workers, err := h.service.ListWorkers(r.Context(), MustPrincipal(r.Context()).OrgID)
+	if err != nil {
+		h.internalError(w, "list workers", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": workers})
+}
+
+func (h *Handler) WorkerHeartbeat(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Queue  string `json:"queue"`
+		Status string `json:"status"`
+	}
+	if err := decodeJSON(w, r, &req); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid_json", "request body must be valid JSON", nil)
+		return
+	}
+	if strings.TrimSpace(req.Queue) == "" {
+		writeAPIError(w, http.StatusBadRequest, "validation_failed", "queue is required", nil)
+		return
+	}
+	worker := &domain.Worker{
+		ID: r.PathValue("id"), OrgID: MustPrincipal(r.Context()).OrgID,
+		Queue: req.Queue, Status: req.Status,
+	}
+	if err := h.service.WorkerHeartbeat(r.Context(), worker); err != nil {
+		h.internalError(w, "worker heartbeat", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, worker)
+}
+
+func (h *Handler) Health(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) Ready(w http.ResponseWriter, r *http.Request) {
+	if err := h.service.Ready(r.Context()); err != nil {
+		writeAPIError(w, http.StatusServiceUnavailable, "not_ready", "a required dependency is unavailable", nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+}
+
+func (h *Handler) taskMutation(w http.ResponseWriter, r *http.Request, fn func(context.Context, uuid.UUID, uuid.UUID) (*domain.Task, error)) {
+	id, ok := parseTaskID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	task, err := fn(r.Context(), MustPrincipal(r.Context()).OrgID, id)
+	if err != nil {
+		h.writeDomainError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, toTaskResponse(task))
+}
+
+func (h *Handler) writeDomainError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, domain.ErrTaskNotFound):
+		writeAPIError(w, http.StatusNotFound, "task_not_found", "task not found", nil)
+	case errors.Is(err, domain.ErrInvalidInput):
+		writeAPIError(w, http.StatusBadRequest, "invalid_cursor", "cursor is invalid", nil)
+	case errors.Is(err, domain.ErrInvalidStateTransition):
+		writeAPIError(w, http.StatusConflict, "invalid_state_transition", "operation is not valid for the current task state", nil)
+	case errors.Is(err, domain.ErrDispatchUnavailable):
+		writeAPIError(w, http.StatusServiceUnavailable, "dispatch_unavailable", "task state was persisted and reconciliation will retry dispatch", nil)
+	default:
+		h.internalError(w, "task operation", err)
+	}
+}
+
+func (h *Handler) internalError(w http.ResponseWriter, operation string, err error) {
+	h.logger.Error(operation, zap.Error(err))
+	writeAPIError(w, http.StatusInternalServerError, "internal_error", "internal server error", nil)
+}
+
+func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(dst); err != nil {
+		return err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("multiple JSON values")
 		}
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
+		return err
 	}
-	task, err := h.storage.GetByID(r.Context(), taskID)
+	return nil
+}
+
+func parseTaskID(w http.ResponseWriter, raw string) (uuid.UUID, bool) {
+	id, err := uuid.Parse(raw)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal error")
-		return
+		writeAPIError(w, http.StatusBadRequest, "invalid_task_id", "task id must be a UUID", nil)
+		return uuid.Nil, false
 	}
-	if err := h.broker.Enqueue(r.Context(), task); err != nil {
-		writeError(w, http.StatusInternalServerError, "requeued in storage but enqueue failed")
-		return
-	}
-	writeJSON(w, http.StatusOK, createTaskResponse{ID: task.ID, Status: string(task.Status)})
+	return id, true
 }
 
-func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
-    writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+func parseLimit(w http.ResponseWriter, raw string) (int, bool) {
+	if raw == "" {
+		return 50, true
+	}
+	limit, err := strconv.Atoi(raw)
+	if err != nil || limit < 1 || limit > 100 {
+		writeAPIError(w, http.StatusBadRequest, "invalid_limit", "limit must be between 1 and 100", nil)
+		return 0, false
+	}
+	return limit, true
 }
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
+func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	_ = json.NewEncoder(w).Encode(value)
 }
 
-func writeError(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, map[string]string{"error": msg})
+func writeAPIError(w http.ResponseWriter, status int, code, message string, details map[string]any) {
+	if details == nil {
+		details = map[string]any{}
+	}
+	writeJSON(w, status, map[string]any{"error": map[string]any{
+		"code": code, "message": message, "details": details,
+	}})
 }

@@ -3,6 +3,8 @@ package domain
 import (
 	"context"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // JobHandler is the contract user-defined task processors implement.
@@ -48,6 +50,7 @@ func DefaultRetryPolicy() RetryPolicy {
 // domain-level contract; engine/worker layer implements enforcement.
 type WorkerConfig struct {
 	WorkerID          string
+	OrgID             uuid.UUID
 	Concurrency       int
 	RateLimitPerSec   int
 	HeartbeatInterval time.Duration

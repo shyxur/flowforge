@@ -57,12 +57,16 @@ return allowed
 
 func (l *TokenBucketLimiter) Allow(ctx context.Context, key string) (bool, error) {
 	now := float64(time.Now().UnixMilli()) / 1000.0
-	res, err := tokenBucketScript.Run(ctx, l.client, []string{fmt.Sprintf("tq:ratelimit:%s", key)},
+	res, err := tokenBucketScript.Run(ctx, l.client, []string{rateLimitKey(key)},
 		l.ratePerSec, l.burst, now).Int()
 	if err != nil {
 		return false, fmt.Errorf("rate limiter: %w", err)
 	}
 	return res == 1, nil
+}
+
+func rateLimitKey(scope string) string {
+	return fmt.Sprintf("queueflow:v1:%s:ratelimit", scope)
 }
 
 func (l *TokenBucketLimiter) Wait(ctx context.Context, key string) error {

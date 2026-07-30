@@ -17,29 +17,35 @@ type Broker interface {
 
 	// Dequeue blocks (up to the given timeout) waiting for a task ID to
 	// become available on the queue. Returns domain.ErrQueueEmpty on timeout.
-	Dequeue(ctx context.Context, queue string, timeout time.Duration) (uuid.UUID, error)
+	Dequeue(ctx context.Context, orgID uuid.UUID, queue string, timeout time.Duration) (uuid.UUID, error)
 
 	// Ack confirms successful processing; removes any in-flight tracking.
-	Ack(ctx context.Context, queue string, taskID uuid.UUID) error
+	Ack(ctx context.Context, orgID uuid.UUID, queue string, taskID uuid.UUID) error
 
 	// Nack signals failed processing; broker may requeue immediately or
 	// leave it for the visibility-timeout reclaimer, depending on delay.
-	Nack(ctx context.Context, queue string, taskID uuid.UUID, delay time.Duration) error
+	Nack(ctx context.Context, orgID uuid.UUID, queue string, taskID uuid.UUID, delay time.Duration) error
 
 	// EnqueueDelayed schedules a task to become visible after `delay`
 	// (used for backoff retries).
 	EnqueueDelayed(ctx context.Context, task *domain.Task, delay time.Duration) error
 
 	// MoveToDeadLetter routes an exhausted task to its DLQ.
-	MoveToDeadLetter(ctx context.Context, queue string, taskID uuid.UUID) error
+	MoveToDeadLetter(ctx context.Context, orgID uuid.UUID, queue string, taskID uuid.UUID) error
 
 	// PromoteDueDelayed moves delayed tasks whose ready-time has passed
 	// back onto the active queue. Called periodically by a scheduler loop.
-	PromoteDueDelayed(ctx context.Context, queue string) (int, error)
+	PromoteDueDelayed(ctx context.Context, orgID uuid.UUID, queue string) (int, error)
 
 	// QueueDepth returns the number of pending tasks — used for
 	// rate-limiting/backpressure decisions and metrics.
-	QueueDepth(ctx context.Context, queue string) (int64, error)
+	QueueDepth(ctx context.Context, orgID uuid.UUID, queue string) (int64, error)
+
+	// Remove deletes a task reference from all hot-state structures.
+	Remove(ctx context.Context, orgID uuid.UUID, queue string, taskID uuid.UUID) error
+
+	// Ping verifies broker connectivity.
+	Ping(ctx context.Context) error
 
 	// Close releases underlying connections gracefully.
 	Close() error
