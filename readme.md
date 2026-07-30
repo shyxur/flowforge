@@ -74,15 +74,26 @@ Requirements: Go 1.25+, Docker with Docker Compose, Node.js, and npm.
 git clone https://github.com/shyxur/windylane.git
 cd windylane
 
-make up
-
-cp apps/dashboard/.env.example apps/dashboard/.env.local
-npm --prefix apps/dashboard install
-make dashboard
+docker compose up --build
 ```
 
-`make up` starts Postgres, Redis, migrations, the API, QueueFlow workers, and
-the EventForge delivery worker. Run `make dashboard` in a second terminal.
+In a second terminal:
+
+```bash
+cd windylane/apps/dashboard
+cp .env.example .env.local
+npm install
+npm run dev
+```
+
+Docker Compose starts Postgres, Redis, migrations, the API, QueueFlow workers,
+and the EventForge delivery worker. The dashboard intentionally runs outside
+Compose for fast frontend iteration. Use `make up` for detached backend startup
+and `make dashboard` as shortcuts for the same development workflow.
+
+The first Docker build downloads base images and Go modules, so it can take a
+few minutes on a cold cache. Subsequent builds reuse Docker and BuildKit caches
+and should complete substantially faster when backend sources are unchanged.
 
 Local endpoints:
 
@@ -91,6 +102,24 @@ Local endpoints:
 
 Run `make smoke` for the local unit, vet, Compose configuration, dashboard lint,
 and dashboard build checks. It does not start services or run integration tests.
+
+Measure startup without deleting local data:
+
+```bash
+./scripts/time-startup.sh --down
+```
+
+Run without a flag to measure an incremental `up --build -d`. The `--fresh`
+flag also deletes the Compose named volume and must be used only when local
+Postgres data can be discarded.
+
+Default host ports are `5432`, `6379`, and `8080`. Override them when another
+local stack is running:
+
+```bash
+POSTGRES_PORT=55433 REDIS_PORT=56380 API_PORT=58080 \
+  ./scripts/time-startup.sh --down
+```
 
 The migration seeds a development organization:
 
@@ -295,6 +324,12 @@ sent to the browser.
 - `/readyz` failing: verify both Postgres and Redis are reachable.
 - Pending task not visible in Redis: the worker reconciliation loop retries
   undispatched Postgres rows every `RECONCILE_INTERVAL_SEC`.
+- Slow first startup: image pulls and Go module downloads are expected once.
+  Run `./scripts/time-startup.sh --down` to measure the startup path.
+- Slow repeated startup: inspect build output for cache misses and confirm Docker
+  Desktop has adequate CPU, memory, and disk available.
+- Port already allocated: stop the conflicting local service or set
+  `POSTGRES_PORT`, `REDIS_PORT`, and `API_PORT` to unused host ports.
 
 ## Visual references
 

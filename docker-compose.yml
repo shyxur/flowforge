@@ -6,31 +6,31 @@ services:
       POSTGRES_PASSWORD: taskqueue
       POSTGRES_DB: taskqueue
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U taskqueue"]
-      interval: 5s
+      interval: 2s
       timeout: 3s
-      retries: 5
+      retries: 15
 
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
+      interval: 2s
       timeout: 3s
-      retries: 5
+      retries: 15
 
   migrate:
     image: migrate/migrate
     depends_on:
       postgres: { condition: service_healthy }
     volumes:
-      - ./migrations:/migrations
+      - ./migrations:/migrations:ro
     command: [
       "-path", "/migrations",
       "-database", "postgres://taskqueue:taskqueue@postgres:5432/taskqueue?sslmode=disable",
@@ -40,7 +40,8 @@ services:
   producer:
     build:
       context: .
-      dockerfile: docker/producer.Dockerfile
+      dockerfile: docker/app.Dockerfile
+      target: producer
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -50,12 +51,13 @@ services:
       - REDIS_ADDR=redis:6379
       - ORG_ID=00000000-0000-4000-8000-000000000001
     ports:
-      - "8080:8080"
+      - "${API_PORT:-8080}:8080"
 
   worker-default:
     build:
       context: .
-      dockerfile: docker/worker.Dockerfile
+      dockerfile: docker/app.Dockerfile
+      target: worker
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -72,7 +74,8 @@ services:
   worker-email:
     build:
       context: .
-      dockerfile: docker/worker.Dockerfile
+      dockerfile: docker/app.Dockerfile
+      target: worker
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -89,7 +92,8 @@ services:
   webhook-worker:
     build:
       context: .
-      dockerfile: docker/webhook-worker.Dockerfile
+      dockerfile: docker/app.Dockerfile
+      target: webhook-worker
     depends_on:
       postgres: { condition: service_healthy }
       migrate: { condition: service_completed_successfully }
