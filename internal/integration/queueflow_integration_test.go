@@ -46,7 +46,7 @@ func TestQueueFlowLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	if _, err := pool.Exec(ctx, "TRUNCATE tasks, workers"); err != nil {
+	if _, err := pool.Exec(ctx, "TRUNCATE webhook_deliveries, webhook_endpoints, tasks, workers"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -124,6 +124,62 @@ func TestQueueFlowLifecycle(t *testing.T) {
 	if err != nil || len(page.Tasks) != 0 {
 		t.Fatalf("cross-org list = %+v err=%v", page, err)
 	}
+
+	testWebhookRepositories(t, ctx, storage, orgID)
+}
+
+func testWebhookRepositories(t *testing.T, ctx context.Context, storage *postgres.PostgresStorage, orgID uuid.UUID) {
+	t.Helper()
+	now := time.Now().UTC()
+	endpoint := &domain.WebhookEndpoint{
+		ID: uuid.New(), OrgID: orgID, Name: "Integration webhook",
+		URL: "https://example.com/hooks", SecretHash: "hashed-secret",
+		EventTypes: []domain.WebhookEventType{
+			domain.WebhookEventTaskCreated,
+			domain.WebhookEventTaskCompleted,
+		},
+		IsActive: true, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := storage.CreateWebhookEndpoint(ctx, endpoint); err != nil {
+		t.Fatalf("create webhook endpoint: %v", err)
+	}
+	items, err := storage.ListWebhookEndpoints(ctx, orgID)
+	if err != nil || len(items) != 1 || items[0].ID != endpoint.ID {
+		t.Fatalf("list webhook endpoints = %+v err=%v", items, err)
+	}
+	if _, err := storage.GetWebhookEndpoint(ctx, uuid.New(), endpoint.ID); !errors.Is(err, domain.ErrWebhookEndpointNotFound) {
+		t.Fatalf("cross-org webhook endpoint read error = %v", err)
+	}
+	endpoint.Name = "Updated integration webhook"
+	endpoint.UpdatedAt = now.Add(time.Second)
+	if err := storage.UpdateWebhookEndpoint(ctx, endpoint); err != nil {
+		t.Fatalf("update webhook endpoint: %v", err)
+	}
+
+	delivery := &domain.WebhookDelivery{
+		ID: uuid.New(), OrgID: orgID, EndpointID: endpoint.ID,
+		EventType: domain.WebhookEventTaskCreated,
+		Payload:   json.RawMessage(`{"task_id":"integration"}`),
+		Status:    domain.WebhookDeliveryPending, MaxAttempts: 5,
+		CreatedAt: now, UpdatedAt: now,
+	}
+	if err := storage.CreateWebhookDelivery(ctx, delivery); err != nil {
+		t.Fatalf("create webhook delivery: %v", err)
+	}
+	due, err := storage.ListDueWebhookDeliveries(ctx, now, 10)
+	if err != nil || len(due) != 1 || due[0].ID != delivery.ID {
+		t.Fatalf("list due webhook deliveries = %+v err=%v", due, err)
+	}
+	if _, err := storage.GetWebhookDelivery(ctx, uuid.New(), delivery.ID); !errors.Is(err, domain.ErrWebhookDeliveryNotFound) {
+		t.Fatalf("cross-org webhook delivery read error = %v", err)
+	}
+
+	if err := storage.SoftDeleteWebhookEndpoint(ctx, orgID, endpoint.ID, now.Add(2*time.Second)); err != nil {
+		t.Fatalf("soft delete webhook endpoint: %v", err)
+	}
+	if _, err := storage.GetWebhookEndpoint(ctx, orgID, endpoint.ID); !errors.Is(err, domain.ErrWebhookEndpointNotFound) {
+		t.Fatalf("soft-deleted webhook endpoint read error = %v", err)
+	}
 }
 
 func assertMigrationsAndSeed(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
@@ -133,7 +189,7 @@ func assertMigrationsAndSeed(t *testing.T, ctx context.Context, pool *pgxpool.Po
 	if err := pool.QueryRow(ctx, "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil {
 		t.Fatal(err)
 	}
-	if version != 2 || dirty {
+	if version != 3 || dirty {
 		t.Fatalf("migration version=%d dirty=%v", version, dirty)
 	}
 	var orgCount, keyCount int

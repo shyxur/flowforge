@@ -84,6 +84,11 @@ POST   /v1/workers/{id}/heartbeat
 GET    /v1/dlq
 POST   /v1/dlq/{id}/requeue
 GET    /v1/events/tasks
+POST   /v1/webhooks/endpoints
+GET    /v1/webhooks/endpoints
+GET    /v1/webhooks/endpoints/{id}
+PATCH  /v1/webhooks/endpoints/{id}
+DELETE /v1/webhooks/endpoints/{id}
 GET    /healthz
 GET    /readyz
 ```
@@ -125,8 +130,19 @@ curl -H 'Authorization: Bearer queueflow-dev-key' \
   'http://localhost:8080/v1/dlq?queue=email&limit=50'
 ```
 
-List endpoints use opaque cursor pagination and never return data from another
-organization.
+Task list endpoints use opaque cursor pagination and never return data from
+another organization.
+
+### Webhook endpoints
+
+Webhook endpoint routes use the same Bearer API-key authentication and
+organization scope as QueueFlow. Endpoint secrets are stored as one-way hashes
+and are never returned by the API. Webhook URLs must use HTTPS. For local
+development only, set `ALLOW_INSECURE_LOCAL_WEBHOOKS=true` to permit HTTP URLs
+whose host is localhost or a loopback IP.
+
+Delivery execution, signing, and webhook dashboard pages are intentionally not
+part of this milestone.
 
 ## Worker lifecycle
 

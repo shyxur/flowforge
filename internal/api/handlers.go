@@ -38,12 +38,17 @@ type TaskService interface {
 }
 
 type Handler struct {
-	service TaskService
-	logger  *zap.Logger
+	service        TaskService
+	webhookService WebhookService
+	logger         *zap.Logger
 }
 
-func NewHandler(service TaskService, logger *zap.Logger) *Handler {
-	return &Handler{service: service, logger: logger}
+func NewHandler(service TaskService, logger *zap.Logger, webhookServices ...WebhookService) *Handler {
+	handler := &Handler{service: service, logger: logger}
+	if len(webhookServices) > 0 {
+		handler.webhookService = webhookServices[0]
+	}
+	return handler
 }
 
 type createTaskRequest struct {

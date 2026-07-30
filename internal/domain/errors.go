@@ -18,6 +18,8 @@ var (
 	ErrInvalidStateTransition  = errors.New("invalid task state transition")
 	ErrUnauthorized            = errors.New("unauthorized")
 	ErrDispatchUnavailable     = errors.New("task persisted but broker dispatch is unavailable")
+	ErrWebhookEndpointNotFound = errors.New("webhook endpoint not found")
+	ErrWebhookDeliveryNotFound = errors.New("webhook delivery not found")
 )
 
 // RetryableError wraps an error to signal engine should retry.

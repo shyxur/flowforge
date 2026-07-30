@@ -31,8 +31,9 @@ func main() {
 
 	limiter := redisbroker.NewTokenBucketLimiter(broker.Client(), 2, 5)
 	service := usecase.NewService(storage, broker)
+	webhookService := usecase.NewWebhookService(storage, cfg.AllowInsecureLocalWebhooks)
 	auth := usecase.NewAuthService(storage)
-	handler := api.NewHandler(service, logger)
+	handler := api.NewHandler(service, logger, webhookService)
 	router := api.NewRouter(handler, auth, limiter, logger)
 
 	srv := &http.Server{
