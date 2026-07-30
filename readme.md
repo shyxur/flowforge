@@ -149,6 +149,7 @@ make test-integration  Run isolated Postgres and Redis integration tests
 make lint     Run go vet
 make api      Run the producer API locally
 make worker   Run one worker locally
+make dashboard  Run the Next.js dashboard on localhost:3000
 ```
 
 Integration tests use `docker-compose.integration.yml`, ephemeral container
@@ -157,6 +158,13 @@ Postgres volume. Run them with:
 
 ```bash
 make test-integration
+```
+
+The dashboard lives in `apps/dashboard`. Copy `.env.example` to `.env.local`,
+install dependencies, and start it with:
+
+```bash
+make dashboard
 ```
 
 ## Troubleshooting

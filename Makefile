@@ -1,4 +1,4 @@
-.PHONY: up down migrate test test-integration lint api worker
+.PHONY: up down migrate test test-integration lint api worker dashboard
 
 up:
 	docker compose up --build -d
@@ -23,3 +23,6 @@ api:
 
 worker:
 	go run ./cmd/worker
+
+dashboard:
+	npm --prefix apps/dashboard run dev
