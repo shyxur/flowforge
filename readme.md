@@ -29,7 +29,8 @@ events.
   retries, and delivery logs.
 - Tenant-scoped TaskCanvas workflow drafts, publish-safe graph validation,
   immutable version snapshots, and durable backend execution through
-  QueueFlow/EventForge. Visual editing is not yet available.
+  QueueFlow/EventForge, with a visual workflow editor MVP for authoring and
+  publishing drafts.
 
 ## Architecture
 
@@ -265,7 +266,9 @@ curl -i http://localhost:8080/v1/workflows \
 
 See [TaskCanvas workflows](docs/taskcanvas.md) for graph rules, immutable
 version snapshots, execution node schemas, idempotency, recovery, and API
-details. The visual editor and execution timeline UI are not implemented yet.
+details. The visual editor supports draft creation, node/edge configuration,
+validation, publishing, and version inspection. Execution timeline UI is not
+implemented yet.
 
 ## Worker lifecycle
 
@@ -341,6 +344,14 @@ EventForge dashboard routes:
 /webhook-deliveries/{id}
 ```
 
+TaskCanvas dashboard routes:
+
+```text
+/workflows
+/workflows/new
+/workflows/{id}
+```
+
 For local use, start the API and webhook worker with `make up`, then run
 `make dashboard`. Webhook signing secrets appear in the browser only once after
 endpoint creation or rotation; the API key remains server-side.
@@ -390,9 +401,9 @@ generated or mock screenshots are not product evidence.
 
 - [x] Phase 1 — QueueFlow core task engine and dashboard.
 - [x] Phase 2 — EventForge webhook management and delivery lifecycle.
-- [ ] Phase 3 — TaskCanvas visual workflow orchestration (draft CRUD, graph
-  validation, publishing, immutable snapshots, and backend execution available;
-  visual builder and timeline UI pending).
+- [ ] Phase 3 — TaskCanvas visual workflow orchestration (draft CRUD, visual
+  builder, graph validation, publishing, immutable snapshots, and backend
+  execution available; execution timeline UI pending).
 - [ ] Phase 4 — QueueLens observability, metrics, and throughput analytics.
 
 ## License and brand policy

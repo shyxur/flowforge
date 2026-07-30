@@ -3,7 +3,63 @@
 TaskCanvas stores organization-scoped workflow drafts, validates their graphs,
 publishes immutable sequential version snapshots, and executes published
 versions through durable node-level orchestration. It does not provide a visual
-editor or execution timeline UI.
+execution timeline UI. The dashboard includes a visual workflow editor MVP for
+draft creation, graph configuration, validation, publishing, and immutable
+version inspection.
+
+## Dashboard workflow editor
+
+The dashboard exposes three TaskCanvas routes:
+
+```text
+/workflows       workflow list
+/workflows/new   draft creation
+/workflows/{id}  visual editor
+```
+
+The list is tenant-scoped, ordered by most recently updated, cursor-paginated,
+and shows draft/published status plus the latest published version. Creating a
+workflow requires a name and starts a safe draft with one trigger node.
+
+The editor has a toolbar, visual canvas, and configuration panel. Its node
+palette supports trigger, task, webhook, delay, and condition nodes. Nodes can
+be moved, selected, configured, connected, and deleted. Task payloads and
+webhook payloads accept JSON without adding a code-editor dependency. Webhook
+nodes select only active EventForge endpoints and never expose endpoint
+secrets. Delay values are persisted as `duration_seconds` and limited to seven
+days. Conditions support only `input.*` fields with `equals`, `not_equals`, or
+`exists`.
+
+Connections reject self-loops, duplicate source/target pairs, and incoming
+edges to triggers before reaching the API. Condition nodes expose explicit
+`true` and `false` handles; their edges persist the selected branch as
+`{"branch": true}` or `{"branch": false}`. Backend graph validation remains
+authoritative.
+
+Save is explicit; there is no autosave or undo/redo. Node positions are stored
+as optional, backward-compatible metadata inside the definition:
+
+```json
+{
+  "id": "send-email",
+  "type": "task",
+  "name": "Send email",
+  "position": {"x": 400, "y": 160},
+  "config": {"queue": "email"}
+}
+```
+
+Legacy definitions without positions receive deterministic fallback positions
+in the editor. Saving a published workflow follows the existing API semantics:
+it creates a new draft while prior published versions remain immutable.
+Archived workflows are read-only.
+
+Validate saves local changes first and displays structured API errors. Publish
+saves, validates, asks for confirmation, and creates the next immutable
+version only when valid. The versions dialog lists newest first and presents a
+read-only JSON snapshot. Rollback, templates, collaboration, arbitrary
+expressions, execution timeline UI, and live execution visualization are not
+implemented.
 
 ## API
 
@@ -83,6 +139,8 @@ Both `nodes` and `edges` arrays are required. Supported node types are
 Draft ingestion enforces the JSON shape, supported node types, non-empty and
 unique node/edge IDs, object-shaped node configs, and valid edge references.
 Unknown fields and malformed definitions return `400 validation_failed`.
+`position` is the only optional canvas presentation field and does not affect
+graph validation or execution.
 
 ## Publish validation
 
@@ -330,4 +388,5 @@ new downstream workflow node from starting.
 
 TaskCanvas does not yet implement rollback, arbitrary condition languages,
 distributed DAG scheduling beyond this durable reconciler, execution timeline
-UI, or dashboard canvas/editor pages.
+UI, live execution paths, advanced templates, autosave, or collaborative
+editing.

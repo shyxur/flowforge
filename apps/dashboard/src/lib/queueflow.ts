@@ -6,6 +6,15 @@ import type {
   WebhookEndpointCreateResult,
   WebhookEventType,
 } from "./webhook-types";
+import type {
+  Workflow,
+  WorkflowDefinition,
+  WorkflowPage,
+  WorkflowPublishResult,
+  WorkflowValidationResult,
+  WorkflowVersionDetail,
+  WorkflowVersionSummary,
+} from "./workflow-types";
 
 export type {
   WebhookDelivery,
@@ -48,6 +57,7 @@ type APIErrorEnvelope = {
   error?: {
     code?: string;
     message?: string;
+    details?: unknown;
   };
 };
 
@@ -55,6 +65,8 @@ export class QueueFlowAPIError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly code?: string,
+    readonly details?: unknown,
   ) {
     super(message);
   }
@@ -85,13 +97,17 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!response.ok) {
     let message = `windylane api returned ${response.status}`;
+    let code: string | undefined;
+    let details: unknown;
     try {
       const body = (await response.json()) as APIErrorEnvelope;
       message = body.error?.message || message;
+      code = body.error?.code;
+      details = body.error?.details;
     } catch {
       // Preserve the status-based message for non-JSON upstream failures.
     }
-    throw new QueueFlowAPIError(message, response.status);
+    throw new QueueFlowAPIError(message, response.status, code, details);
   }
   if (response.status === 204) {
     return undefined as T;
@@ -139,6 +155,87 @@ export async function listWebhookEndpoints(): Promise<{
     "/v1/webhooks/endpoints",
   );
   return { items: result.items ?? [] };
+}
+
+export async function listWorkflows(input: {
+  cursor?: string;
+  status?: string;
+  limit?: number;
+} = {}): Promise<WorkflowPage> {
+  const query = new URLSearchParams({ limit: String(input.limit ?? 50) });
+  if (input.cursor) query.set("cursor", input.cursor);
+  if (input.status) query.set("status", input.status);
+  const result = await apiFetch<WorkflowPage>(`/v1/workflows?${query}`);
+  return { ...result, items: result.items ?? [] };
+}
+
+export function createWorkflow(input: {
+  name: string;
+  description?: string | null;
+  definition: WorkflowDefinition;
+}): Promise<Workflow> {
+  return apiFetch<Workflow>("/v1/workflows", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function getWorkflow(id: string): Promise<Workflow> {
+  return apiFetch<Workflow>(`/v1/workflows/${encodeURIComponent(id)}`);
+}
+
+export function updateWorkflow(
+  id: string,
+  input: {
+    name: string;
+    description: string | null;
+    definition: WorkflowDefinition;
+  },
+): Promise<Workflow> {
+  return apiFetch<Workflow>(`/v1/workflows/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteWorkflow(id: string): Promise<void> {
+  return apiFetch<void>(`/v1/workflows/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
+export function validateWorkflow(id: string): Promise<WorkflowValidationResult> {
+  return apiFetch<WorkflowValidationResult>(
+    `/v1/workflows/${encodeURIComponent(id)}/validate`,
+    { method: "POST" },
+  );
+}
+
+export function publishWorkflow(id: string): Promise<WorkflowPublishResult> {
+  return apiFetch<WorkflowPublishResult>(
+    `/v1/workflows/${encodeURIComponent(id)}/publish`,
+    { method: "POST" },
+  );
+}
+
+export async function listWorkflowVersions(
+  id: string,
+): Promise<{ items: WorkflowVersionSummary[] }> {
+  const result = await apiFetch<{ items: WorkflowVersionSummary[] }>(
+    `/v1/workflows/${encodeURIComponent(id)}/versions`,
+  );
+  return { items: result.items ?? [] };
+}
+
+export function getWorkflowVersion(
+  id: string,
+  version: number,
+): Promise<WorkflowVersionDetail> {
+  return apiFetch<WorkflowVersionDetail>(
+    `/v1/workflows/${encodeURIComponent(id)}/versions/${version}`,
+  );
 }
 
 export function getWebhookEndpoint(id: string): Promise<WebhookEndpoint> {

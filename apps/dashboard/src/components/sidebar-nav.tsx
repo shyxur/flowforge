@@ -10,6 +10,7 @@ const navigation = [
   { href: "/dlq", label: "dlq" },
   { href: "/webhooks", label: "webhooks" },
   { href: "/webhook-deliveries", label: "webhook deliveries" },
+  { href: "/workflows", label: "workflows" },
 ];
 
 export function SidebarNav() {

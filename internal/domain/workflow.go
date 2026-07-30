@@ -49,10 +49,16 @@ type WorkflowDefinition struct {
 }
 
 type WorkflowNode struct {
-	ID     string           `json:"id"`
-	Type   WorkflowNodeType `json:"type"`
-	Name   string           `json:"name"`
-	Config map[string]any   `json:"config"`
+	ID       string                `json:"id"`
+	Type     WorkflowNodeType      `json:"type"`
+	Name     string                `json:"name"`
+	Position *WorkflowNodePosition `json:"position,omitempty"`
+	Config   map[string]any        `json:"config"`
+}
+
+type WorkflowNodePosition struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
 }
 
 type WorkflowEdge struct {
