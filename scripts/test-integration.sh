@@ -17,4 +17,4 @@ docker compose -p "$project" -f "$compose_file" run --rm migrate
 QUEUEFLOW_INTEGRATION=1 \
 INTEGRATION_DB_DSN="postgres://taskqueue:taskqueue@localhost:55432/taskqueue?sslmode=disable" \
 INTEGRATION_REDIS_ADDR="localhost:56379" \
-go test -tags=integration ./internal/integration -count=1
+go test -tags=integration ./internal/integration ./internal/broker/redis -count=1

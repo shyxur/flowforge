@@ -87,7 +87,7 @@ func TestQueueFlowLifecycle(t *testing.T) {
 	}
 
 	pendingKey := "queueflow:v1:org:" + orgID.String() + ":queue:" + queue + ":pending"
-	if depth, err := broker.Client().LLen(ctx, pendingKey).Result(); err != nil || depth != 1 {
+	if depth, err := broker.Client().ZCard(ctx, pendingKey).Result(); err != nil || depth != 1 {
 		t.Fatalf("tenant pending key depth=%d err=%v", depth, err)
 	}
 

@@ -37,6 +37,11 @@ queueflow:v1:org:{org_id}:queue:{queue}:delayed
 queueflow:v1:org:{org_id}:queue:{queue}:dlq
 ```
 
+Pending and processing state use Redis sorted sets. Priorities range from `0`
+to `9`; higher values are dispatched first. A per-queue monotonic sequence
+preserves FIFO ordering within the same priority. Delayed promotion reads the
+stored priority before returning a task to the pending set.
+
 ## Local setup
 
 Requirements: Go 1.25+, Docker and Docker Compose.
@@ -126,7 +131,7 @@ organization.
 ## Worker lifecycle
 
 1. The producer inserts the task in Postgres.
-2. The task reference is pushed to the tenant-scoped Redis pending list.
+2. The task reference is added to the tenant-scoped Redis priority set.
 3. A worker atomically moves it to processing and claims the Postgres row.
 4. Heartbeats extend the visibility deadline.
 5. Success updates Postgres before Redis ACK.
