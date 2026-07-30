@@ -1,9 +1,12 @@
 # EventForge webhooks
 
-EventForge publishes QueueFlow task lifecycle events to tenant-scoped HTTP
-endpoints. Postgres is the source of truth for endpoints, encrypted signing
-secrets, deliveries, attempts, and delivery results. A separate webhook worker
-claims due deliveries and sends them over HTTP.
+EventForge is the windylane webhook delivery module. It publishes QueueFlow task
+lifecycle events to tenant-scoped HTTP endpoints. Postgres is the source of
+truth for endpoints, encrypted signing secrets, deliveries, attempts, and
+delivery results. A separate webhook worker claims due deliveries and sends
+them over HTTP.
+
+The product domain target is [`windylane.dev`](https://windylane.dev).
 
 All `/v1/webhooks` routes require the organization's Bearer API key:
 
@@ -106,6 +109,9 @@ deliveries, and retain the returned value securely because it cannot be
 retrieved later.
 
 ## Verify signatures
+
+`X-Windylane-*` is the public windylane webhook protocol namespace. Header names
+are case-insensitive on the wire, but the canonical spellings are shown below.
 
 Every delivery is an HTTP `POST` with `Content-Type: application/json` and:
 

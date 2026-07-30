@@ -2,7 +2,8 @@
 
 windylane is a monochrome developer-tool brand for a serious saas control plane.
 
-this file is the source of truth for dashboard styling. the brand board image is only visual reference.
+this file is the source of truth for dashboard styling. the brand board image
+is visual reference only.
 
 ---
 
@@ -54,6 +55,12 @@ windylane
 
 always write the product name lowercase in the dashboard unless required by a technical context.
 
+domain target:
+
+```txt
+windylane.dev
+```
+
 slogan:
 
 ```txt
@@ -65,6 +72,11 @@ current assets:
 - brand board: `docs/brand/windylane-brand-board.png`
 - dashboard logo: `apps/dashboard/public/brand/windylane-logo.png`
 - dashboard mark: `apps/dashboard/public/brand/windylane-mark.png`
+
+the logo and standalone mark must use the same smooth, monochrome two-node lane
+emblem: one node at the upper-left start, one at the lower-right end, connected
+by a rounded continuous path. do not substitute a legacy emblem or create a
+second mark for the wordmark lockup.
 
 ---
 

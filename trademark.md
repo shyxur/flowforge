@@ -3,8 +3,11 @@
 the windylane name, logo, icon, wordmark, monochrome brand system, visual
 identity, and related brand assets are owned by shyxur.
 
-the source code in this repository is licensed separately under the apache
-license 2.0. that software license applies to source code only. it does not
+the project domain target, `windylane.dev`, is part of the windylane product
+identity.
+
+the source code in this repository is licensed separately under the Apache
+License 2.0. that software license applies to source code only. it does not
 grant permission to use the windylane name, logo, icon, wordmark, visual
 identity, brand system, or related brand assets in a way that suggests
 ownership, endorsement, official affiliation, or commercial branding.
@@ -37,7 +40,7 @@ shyxur.
 
 ## forks
 
-forks may use, modify, and distribute the source code under the apache license
+forks may use, modify, and distribute the source code under the Apache License
 2.0.
 
 forks must clearly state that they are unofficial and must use a different name
@@ -46,7 +49,7 @@ and visual identity unless written permission is granted by shyxur.
 ## brand assets
 
 all files under `docs/brand/` are provided for reference only. they are not
-open source and are not covered by the apache license 2.0.
+open source and are not covered by the Apache License 2.0.
 
 unless explicitly stated otherwise, the windylane brand assets are:
 

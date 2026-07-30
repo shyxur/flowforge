@@ -1,4 +1,4 @@
-.PHONY: up down migrate test test-integration lint api worker webhook-worker dashboard redis-rebuild
+.PHONY: up down migrate test test-integration lint smoke api worker webhook-worker dashboard redis-rebuild
 
 up:
 	docker compose up --build -d
@@ -17,6 +17,9 @@ test-integration:
 
 lint:
 	go vet ./...
+
+smoke:
+	./scripts/smoke.sh
 
 api:
 	go run ./cmd/producer

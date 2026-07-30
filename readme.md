@@ -2,13 +2,31 @@
 
 stay in flow.
 
-windylane is the control plane for QueueFlow and EventForge at
-[`windylane.dev`](https://windylane.dev).
+![windylane monochrome brand board](docs/brand/windylane-brand-board.png)
 
-QueueFlow is a multi-tenant, at-least-once distributed task queue written in Go.
-Postgres is the durable source of truth; Redis is the broker and hot-state
-transport. EventForge adds tenant-scoped, signed webhook delivery for QueueFlow
-task lifecycle events.
+windylane is a self-hosted control plane for distributed task execution and
+webhook delivery, built with Go, Postgres, Redis, Next.js, and Tailwind CSS.
+The product target is [`windylane.dev`](https://windylane.dev).
+
+Current release: [`v0.4.0-windylane`](https://github.com/shyxur/windylane/releases/tag/v0.4.0-windylane)
+
+QueueFlow provides a multi-tenant, at-least-once task queue. Postgres is the
+durable source of truth; Redis handles priority-aware dispatch and hot state.
+EventForge adds tenant-scoped, signed webhook delivery for task lifecycle
+events.
+
+## Core features
+
+- Mandatory idempotency keys, strict request validation, rate limiting, and
+  request body limits.
+- Priority-aware Redis dispatch with durable Postgres task state.
+- Worker heartbeats, visibility timeouts, graceful shutdown, retries, backoff,
+  dead-letter queues, and Redis reconstruction.
+- Tenant-scoped task APIs and real-time status updates over Server-Sent Events.
+- Server-rendered operations dashboard for tasks, workers, DLQ, webhooks, and
+  webhook deliveries.
+- Encrypted webhook signing secrets, `X-Windylane-*` signatures, delivery
+  retries, and delivery logs.
 
 ## Architecture
 
@@ -50,12 +68,29 @@ stored priority before returning a task to the pending set.
 
 ## Local setup
 
-Requirements: Go 1.25+, Docker and Docker Compose.
+Requirements: Go 1.25+, Docker with Docker Compose, Node.js, and npm.
 
 ```bash
+git clone https://github.com/shyxur/windylane.git
+cd windylane
+
 make up
-make test
+
+cp apps/dashboard/.env.example apps/dashboard/.env.local
+npm --prefix apps/dashboard install
+make dashboard
 ```
+
+`make up` starts Postgres, Redis, migrations, the API, QueueFlow workers, and
+the EventForge delivery worker. Run `make dashboard` in a second terminal.
+
+Local endpoints:
+
+- API health: [`http://localhost:8080/healthz`](http://localhost:8080/healthz)
+- Dashboard: [`http://localhost:3000`](http://localhost:3000)
+
+Run `make smoke` for the local unit, vet, Compose configuration, dashboard lint,
+and dashboard build checks. It does not start services or run integration tests.
 
 The migration seeds a development organization:
 
@@ -189,6 +224,7 @@ make migrate  Run pending migrations
 make test     Run all tests
 make test-integration  Run isolated Postgres and Redis integration tests
 make lint     Run go vet
+make smoke    Run local release-readiness checks
 make api      Run the producer API locally
 make worker   Run one worker locally
 make webhook-worker  Run the EventForge delivery worker locally
@@ -260,10 +296,27 @@ sent to the browser.
 - Pending task not visible in Redis: the worker reconciliation loop retries
   undispatched Postgres rows every `RECONCILE_INTERVAL_SEC`.
 
-## license
+## Visual references
 
-the source code is licensed under the apache license 2.0.
+- [Brand board](docs/brand/windylane-brand-board.png)
+- [Brand system](docs/brand/brand-system.md)
+- [Dashboard visual QA checklist](docs/dashboard-qa.md)
+- [Dashboard screenshot policy and placeholders](docs/screenshots/README.md)
 
-the windylane name, logo, wordmark, icon, visual identity, brand system, and
+Only screenshots captured from a real windylane environment should be added;
+generated or mock screenshots are not product evidence.
+
+## Roadmap
+
+- [x] Phase 1 — QueueFlow core task engine and dashboard.
+- [x] Phase 2 — EventForge webhook management and delivery lifecycle.
+- [ ] Phase 3 — TaskCanvas visual workflow orchestration (not started).
+- [ ] Phase 4 — QueueLens observability, metrics, and throughput analytics.
+
+## License and brand policy
+
+Source code is licensed under the [Apache License 2.0](LICENSE).
+
+The windylane name, logo, wordmark, icon, visual identity, brand system, and
 files under `docs/brand/` are not open source and are not licensed for reuse as
-a brand identity. see [`trademark.md`](./trademark.md).
+a brand identity. See the [trademark and brand policy](trademark.md).
