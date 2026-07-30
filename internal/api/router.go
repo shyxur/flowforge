@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/shyxur/distributed-task-queue/internal/ports"
+	"github.com/shyxur/flowforge/internal/ports"
 	"go.uber.org/zap"
 )
 

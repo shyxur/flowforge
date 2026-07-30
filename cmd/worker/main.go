@@ -7,13 +7,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	redisbroker "github.com/shyxur/distributed-task-queue/internal/broker/redis"
-	"github.com/shyxur/distributed-task-queue/internal/config"
-	"github.com/shyxur/distributed-task-queue/internal/domain"
-	"github.com/shyxur/distributed-task-queue/internal/engine"
-	"github.com/shyxur/distributed-task-queue/internal/ports"
-	"github.com/shyxur/distributed-task-queue/internal/storage/postgres"
-	"github.com/shyxur/distributed-task-queue/internal/worker"
+	redisbroker "github.com/shyxur/flowforge/internal/broker/redis"
+	"github.com/shyxur/flowforge/internal/config"
+	"github.com/shyxur/flowforge/internal/domain"
+	"github.com/shyxur/flowforge/internal/engine"
+	"github.com/shyxur/flowforge/internal/ports"
+	"github.com/shyxur/flowforge/internal/storage/postgres"
+	"github.com/shyxur/flowforge/internal/worker"
 	"go.uber.org/zap"
 )
 

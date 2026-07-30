@@ -3,7 +3,7 @@ package api
 import (
 	"strings"
 
-	"github.com/shyxur/distributed-task-queue/internal/domain"
+	"github.com/shyxur/flowforge/internal/domain"
 )
 
 func validateCreateTask(req createTaskRequest) map[string]any {

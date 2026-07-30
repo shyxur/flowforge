@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/shyxur/distributed-task-queue/internal/api"
-	redisbroker "github.com/shyxur/distributed-task-queue/internal/broker/redis"
-	"github.com/shyxur/distributed-task-queue/internal/config"
-	"github.com/shyxur/distributed-task-queue/internal/storage/postgres"
-	"github.com/shyxur/distributed-task-queue/internal/usecase"
+	"github.com/shyxur/flowforge/internal/api"
+	redisbroker "github.com/shyxur/flowforge/internal/broker/redis"
+	"github.com/shyxur/flowforge/internal/config"
+	"github.com/shyxur/flowforge/internal/storage/postgres"
+	"github.com/shyxur/flowforge/internal/usecase"
 	"go.uber.org/zap"
 )
 

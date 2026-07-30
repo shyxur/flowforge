@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/shyxur/distributed-task-queue/internal/domain"
-	"github.com/shyxur/distributed-task-queue/internal/engine"
-	"github.com/shyxur/distributed-task-queue/internal/ports"
+	"github.com/shyxur/flowforge/internal/domain"
+	"github.com/shyxur/flowforge/internal/engine"
+	"github.com/shyxur/flowforge/internal/ports"
 	"go.uber.org/zap"
 )
 

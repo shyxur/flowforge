@@ -10,9 +10,9 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/shyxur/distributed-task-queue/internal/domain"
-	"github.com/shyxur/distributed-task-queue/internal/testutil"
-	"github.com/shyxur/distributed-task-queue/internal/usecase"
+	"github.com/shyxur/flowforge/internal/domain"
+	"github.com/shyxur/flowforge/internal/testutil"
+	"github.com/shyxur/flowforge/internal/usecase"
 	"go.uber.org/zap"
 )
 

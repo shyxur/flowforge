@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/shyxur/distributed-task-queue/internal/domain"
+	"github.com/shyxur/flowforge/internal/domain"
 )
 
 // Storage abstracts durable persistence of task state (Postgres, etc.).
