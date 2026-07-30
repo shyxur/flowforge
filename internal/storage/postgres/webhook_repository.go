@@ -10,8 +10,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/shyxur/flowforge/internal/domain"
-	"github.com/shyxur/flowforge/internal/ports"
+	"github.com/shyxur/windylane/internal/domain"
+	"github.com/shyxur/windylane/internal/ports"
 )
 
 var (

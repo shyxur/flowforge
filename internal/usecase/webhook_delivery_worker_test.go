@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/shyxur/flowforge/internal/domain"
-	"github.com/shyxur/flowforge/internal/ports"
-	"github.com/shyxur/flowforge/internal/testutil"
-	webhookinfra "github.com/shyxur/flowforge/internal/webhook"
+	"github.com/shyxur/windylane/internal/domain"
+	"github.com/shyxur/windylane/internal/ports"
+	"github.com/shyxur/windylane/internal/testutil"
+	webhookinfra "github.com/shyxur/windylane/internal/webhook"
 )
 
 type webhookHTTPClientFunc func(context.Context, ports.WebhookHTTPRequest) (*ports.WebhookHTTPResponse, error)
@@ -43,16 +43,16 @@ func TestWebhookDeliveryWorkerMarks2xxDeliveredAndSendsSignedHeaders(t *testing.
 	}
 	signer := webhookinfra.HMACSigner{}
 	client := webhookHTTPClientFunc(func(_ context.Context, request ports.WebhookHTTPRequest) (*ports.WebhookHTTPResponse, error) {
-		if request.Headers["X-FlowForge-Event"] != string(delivery.EventType) ||
-			request.Headers["X-FlowForge-Delivery"] != delivery.ID.String() ||
-			request.Headers["X-FlowForge-Timestamp"] != "1722326400" {
+		if request.Headers["X-Windylane-Event"] != string(delivery.EventType) ||
+			request.Headers["X-Windylane-Delivery"] != delivery.ID.String() ||
+			request.Headers["X-Windylane-Timestamp"] != "1722326400" {
 			t.Fatalf("headers = %#v", request.Headers)
 		}
 		if !signer.Verify(
 			"signing-secret",
-			request.Headers["X-FlowForge-Timestamp"],
+			request.Headers["X-Windylane-Timestamp"],
 			request.Body,
-			request.Headers["X-FlowForge-Signature"],
+			request.Headers["X-Windylane-Signature"],
 		) {
 			t.Fatal("delivery signature is invalid")
 		}

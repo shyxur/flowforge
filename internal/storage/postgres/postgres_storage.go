@@ -12,8 +12,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/shyxur/flowforge/internal/domain"
-	"github.com/shyxur/flowforge/internal/ports"
+	"github.com/shyxur/windylane/internal/domain"
+	"github.com/shyxur/windylane/internal/ports"
 )
 
 type PostgresStorage struct {

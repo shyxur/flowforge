@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/shyxur/flowforge/internal/domain"
-	"github.com/shyxur/flowforge/internal/ports"
+	"github.com/shyxur/windylane/internal/domain"
+	"github.com/shyxur/windylane/internal/ports"
 )
 
 type WebhookService struct {

@@ -20,12 +20,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/shyxur/flowforge/internal/api"
-	redisbroker "github.com/shyxur/flowforge/internal/broker/redis"
-	"github.com/shyxur/flowforge/internal/domain"
-	"github.com/shyxur/flowforge/internal/storage/postgres"
-	"github.com/shyxur/flowforge/internal/usecase"
-	webhookinfra "github.com/shyxur/flowforge/internal/webhook"
+	"github.com/shyxur/windylane/internal/api"
+	redisbroker "github.com/shyxur/windylane/internal/broker/redis"
+	"github.com/shyxur/windylane/internal/domain"
+	"github.com/shyxur/windylane/internal/storage/postgres"
+	"github.com/shyxur/windylane/internal/usecase"
+	webhookinfra "github.com/shyxur/windylane/internal/webhook"
 	"go.uber.org/zap"
 )
 
@@ -455,10 +455,10 @@ func assertSignedWebhookRequest(
 	request capturedWebhookRequest,
 ) {
 	t.Helper()
-	eventHeader := request.Header.Get("X-FlowForge-Event")
-	deliveryHeader := request.Header.Get("X-FlowForge-Delivery")
-	timestampHeader := request.Header.Get("X-FlowForge-Timestamp")
-	signatureHeader := request.Header.Get("X-FlowForge-Signature")
+	eventHeader := request.Header.Get("X-Windylane-Event")
+	deliveryHeader := request.Header.Get("X-Windylane-Delivery")
+	timestampHeader := request.Header.Get("X-Windylane-Timestamp")
+	signatureHeader := request.Header.Get("X-Windylane-Signature")
 	if eventHeader != string(eventType) {
 		t.Fatalf("event header=%q want=%q", eventHeader, eventType)
 	}

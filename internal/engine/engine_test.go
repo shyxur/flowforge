@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/shyxur/flowforge/internal/domain"
-	"github.com/shyxur/flowforge/internal/testutil"
+	"github.com/shyxur/windylane/internal/domain"
+	"github.com/shyxur/windylane/internal/testutil"
 	"go.uber.org/zap"
 )
 

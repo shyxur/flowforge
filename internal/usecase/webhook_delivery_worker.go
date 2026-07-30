@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/shyxur/flowforge/internal/domain"
-	"github.com/shyxur/flowforge/internal/ports"
+	"github.com/shyxur/windylane/internal/domain"
+	"github.com/shyxur/windylane/internal/ports"
 )
 
 type WebhookDeliveryWorker struct {
@@ -78,10 +78,10 @@ func (worker *WebhookDeliveryWorker) process(ctx context.Context, delivery *doma
 	response, sendErr := worker.client.Send(ctx, ports.WebhookHTTPRequest{
 		URL: endpoint.URL,
 		Headers: map[string]string{
-			"X-FlowForge-Event":     string(delivery.EventType),
-			"X-FlowForge-Delivery":  delivery.ID.String(),
-			"X-FlowForge-Timestamp": timestamp,
-			"X-FlowForge-Signature": worker.signer.Sign(secret, timestamp, delivery.Payload),
+			"X-Windylane-Event":     string(delivery.EventType),
+			"X-Windylane-Delivery":  delivery.ID.String(),
+			"X-Windylane-Timestamp": timestamp,
+			"X-Windylane-Signature": worker.signer.Sign(secret, timestamp, delivery.Payload),
 		},
 		Body: delivery.Payload,
 	})

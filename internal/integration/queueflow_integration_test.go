@@ -12,11 +12,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	redisbroker "github.com/shyxur/flowforge/internal/broker/redis"
-	"github.com/shyxur/flowforge/internal/domain"
-	"github.com/shyxur/flowforge/internal/engine"
-	"github.com/shyxur/flowforge/internal/storage/postgres"
-	"github.com/shyxur/flowforge/internal/usecase"
+	redisbroker "github.com/shyxur/windylane/internal/broker/redis"
+	"github.com/shyxur/windylane/internal/domain"
+	"github.com/shyxur/windylane/internal/engine"
+	"github.com/shyxur/windylane/internal/storage/postgres"
+	"github.com/shyxur/windylane/internal/usecase"
 	"go.uber.org/zap"
 )
 

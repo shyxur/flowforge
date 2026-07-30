@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/shyxur/flowforge/internal/domain"
+	"github.com/shyxur/windylane/internal/domain"
 )
 
 // Broker abstracts the message transport layer (Redis, SQS, Kafka, etc.).

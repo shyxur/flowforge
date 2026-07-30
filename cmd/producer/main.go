@@ -5,12 +5,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/shyxur/flowforge/internal/api"
-	redisbroker "github.com/shyxur/flowforge/internal/broker/redis"
-	"github.com/shyxur/flowforge/internal/config"
-	"github.com/shyxur/flowforge/internal/storage/postgres"
-	"github.com/shyxur/flowforge/internal/usecase"
-	"github.com/shyxur/flowforge/internal/webhook"
+	"github.com/shyxur/windylane/internal/api"
+	redisbroker "github.com/shyxur/windylane/internal/broker/redis"
+	"github.com/shyxur/windylane/internal/config"
+	"github.com/shyxur/windylane/internal/storage/postgres"
+	"github.com/shyxur/windylane/internal/usecase"
+	"github.com/shyxur/windylane/internal/webhook"
 	"go.uber.org/zap"
 )
 

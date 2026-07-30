@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/shyxur/flowforge/internal/config"
-	"github.com/shyxur/flowforge/internal/storage/postgres"
-	"github.com/shyxur/flowforge/internal/usecase"
-	webhookinfra "github.com/shyxur/flowforge/internal/webhook"
-	"github.com/shyxur/flowforge/internal/worker"
+	"github.com/shyxur/windylane/internal/config"
+	"github.com/shyxur/windylane/internal/storage/postgres"
+	"github.com/shyxur/windylane/internal/usecase"
+	webhookinfra "github.com/shyxur/windylane/internal/webhook"
+	"github.com/shyxur/windylane/internal/worker"
 	"go.uber.org/zap"
 )
 

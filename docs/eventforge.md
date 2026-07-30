@@ -111,13 +111,10 @@ Every delivery is an HTTP `POST` with `Content-Type: application/json` and:
 
 | Header | Value |
 | --- | --- |
-| `X-FlowForge-Event` | Event type, such as `task.completed` |
-| `X-FlowForge-Delivery` | Delivery UUID |
-| `X-FlowForge-Timestamp` | Unix timestamp in seconds |
-| `X-FlowForge-Signature` | `v1=` followed by the hex HMAC-SHA256 digest |
-
-the `X-FlowForge-*` header names are retained as legacy protocol identifiers
-for backward compatibility. they do not represent the current product brand.
+| `X-Windylane-Event` | Event type, such as `task.completed` |
+| `X-Windylane-Delivery` | Delivery UUID |
+| `X-Windylane-Timestamp` | Unix timestamp in seconds |
+| `X-Windylane-Signature` | `v1=` followed by the hex HMAC-SHA256 digest |
 
 The signed bytes are:
 
@@ -153,9 +150,9 @@ func Verify(secret, timestamp string, rawBody []byte, signature string) bool {
 }
 ```
 
-Also parse `X-FlowForge-Timestamp` and reject timestamps outside a short
+Also parse `X-Windylane-Timestamp` and reject timestamps outside a short
 tolerance (for example, five minutes) to reduce replay risk. Store recently
-processed `X-FlowForge-Delivery` values if the receiver must reject duplicate
+processed `X-Windylane-Delivery` values if the receiver must reject duplicate
 deliveries. EventForge delivery is at least once, so receivers must be
 idempotent.
 

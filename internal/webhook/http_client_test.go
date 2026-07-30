@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shyxur/flowforge/internal/ports"
+	"github.com/shyxur/windylane/internal/ports"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

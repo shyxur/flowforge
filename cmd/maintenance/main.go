@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"os"
 
-	redisbroker "github.com/shyxur/flowforge/internal/broker/redis"
-	"github.com/shyxur/flowforge/internal/config"
-	"github.com/shyxur/flowforge/internal/storage/postgres"
-	"github.com/shyxur/flowforge/internal/usecase"
+	redisbroker "github.com/shyxur/windylane/internal/broker/redis"
+	"github.com/shyxur/windylane/internal/config"
+	"github.com/shyxur/windylane/internal/storage/postgres"
+	"github.com/shyxur/windylane/internal/usecase"
 )
 
 func main() {

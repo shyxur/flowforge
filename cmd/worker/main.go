@@ -8,14 +8,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	redisbroker "github.com/shyxur/flowforge/internal/broker/redis"
-	"github.com/shyxur/flowforge/internal/config"
-	"github.com/shyxur/flowforge/internal/domain"
-	"github.com/shyxur/flowforge/internal/engine"
-	"github.com/shyxur/flowforge/internal/ports"
-	"github.com/shyxur/flowforge/internal/storage/postgres"
-	"github.com/shyxur/flowforge/internal/usecase"
-	"github.com/shyxur/flowforge/internal/worker"
+	redisbroker "github.com/shyxur/windylane/internal/broker/redis"
+	"github.com/shyxur/windylane/internal/config"
+	"github.com/shyxur/windylane/internal/domain"
+	"github.com/shyxur/windylane/internal/engine"
+	"github.com/shyxur/windylane/internal/ports"
+	"github.com/shyxur/windylane/internal/storage/postgres"
+	"github.com/shyxur/windylane/internal/usecase"
+	"github.com/shyxur/windylane/internal/worker"
 	"go.uber.org/zap"
 )
 

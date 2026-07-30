@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/shyxur/flowforge/internal/domain"
+	"github.com/shyxur/windylane/internal/domain"
 )
 
 // taskRow mirrors the tasks table for scanning; separates DB shape from

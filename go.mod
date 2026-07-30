@@ -1,4 +1,4 @@
-module github.com/shyxur/flowforge
+module github.com/shyxur/windylane
 
 go 1.25.0
 

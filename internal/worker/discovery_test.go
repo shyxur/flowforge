@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/shyxur/flowforge/internal/domain"
+	"github.com/shyxur/windylane/internal/domain"
 	"go.uber.org/zap"
 )
 

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shyxur/flowforge/internal/ports"
+	"github.com/shyxur/windylane/internal/ports"
 )
 
 const DefaultResponseBodyLimit = 4 * 1024

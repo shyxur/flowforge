@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/shyxur/flowforge/internal/domain"
+	"github.com/shyxur/windylane/internal/domain"
 )
 
 func TestPriorityDispatchIntegration(t *testing.T) {

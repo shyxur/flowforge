@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/shyxur/flowforge/internal/domain"
-	"github.com/shyxur/flowforge/internal/usecase"
-	webhookinfra "github.com/shyxur/flowforge/internal/webhook"
+	"github.com/shyxur/windylane/internal/domain"
+	"github.com/shyxur/windylane/internal/usecase"
+	webhookinfra "github.com/shyxur/windylane/internal/webhook"
 	"go.uber.org/zap"
 )
 

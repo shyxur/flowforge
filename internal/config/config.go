@@ -59,7 +59,7 @@ func Load() *Config {
 	v.SetDefault("WORKER_DISCOVERY_ENABLED", false)
 	v.SetDefault("WORKER_DISCOVERY_INTERVAL_SEC", 10)
 	v.SetDefault("ALLOW_INSECURE_LOCAL_WEBHOOKS", false)
-	v.SetDefault("WEBHOOK_SECRET_ENCRYPTION_KEY", "flowforge-local-development-only")
+	v.SetDefault("WEBHOOK_SECRET_ENCRYPTION_KEY", "windylane-local-development-only")
 	v.SetDefault("WEBHOOK_DELIVERY_TIMEOUT_SEC", 10)
 	v.SetDefault("WEBHOOK_DELIVERY_POLL_INTERVAL_SEC", 1)
 	v.SetDefault("WEBHOOK_DELIVERY_BATCH_SIZE", 50)

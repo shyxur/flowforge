@@ -3,7 +3,7 @@ package api
 import (
 	"strings"
 
-	"github.com/shyxur/flowforge/internal/domain"
+	"github.com/shyxur/windylane/internal/domain"
 )
 
 func validateCreateTask(req createTaskRequest) map[string]any {

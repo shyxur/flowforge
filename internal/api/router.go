@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/shyxur/flowforge/internal/ports"
+	"github.com/shyxur/windylane/internal/ports"
 	"go.uber.org/zap"
 )
 
