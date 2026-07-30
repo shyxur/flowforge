@@ -2,19 +2,22 @@
 
 TaskCanvas stores organization-scoped workflow drafts, validates their graphs,
 publishes immutable sequential version snapshots, and executes published
-versions through durable node-level orchestration. It does not provide a visual
-execution timeline UI. The dashboard includes a visual workflow editor MVP for
-draft creation, graph configuration, validation, publishing, and immutable
-version inspection.
+versions through durable node-level orchestration. The dashboard includes a
+visual workflow editor for draft creation, graph configuration, validation,
+publishing, immutable version inspection, and execution timeline monitoring.
 
 ## Dashboard workflow editor
 
-The dashboard exposes three TaskCanvas routes:
+The dashboard exposes five TaskCanvas routes:
 
 ```text
 /workflows       workflow list
 /workflows/new   draft creation
 /workflows/{id}  visual editor
+/workflows/{id}/executions
+                  execution list and run dialog
+/workflows/{id}/executions/{execution_id}
+                  execution timeline and node detail
 ```
 
 The list is tenant-scoped, ordered by most recently updated, cursor-paginated,
@@ -58,8 +61,36 @@ Validate saves local changes first and displays structured API errors. Publish
 saves, validates, asks for confirmation, and creates the next immutable
 version only when valid. The versions dialog lists newest first and presents a
 read-only JSON snapshot. Rollback, templates, collaboration, arbitrary
-expressions, execution timeline UI, and live execution visualization are not
-implemented.
+expressions, autosave, and undo/redo are not implemented.
+
+## Dashboard execution monitoring
+
+The execution list is cursor-paginated and can be filtered by execution
+status. Each row shows the immutable workflow version, status, creation and
+start timestamps, duration, and a link to the detail view. Loading, empty, and
+retryable error states keep the workflow context visible.
+
+Run workflow is available only for published workflows. The dialog accepts an
+optional version and JSON input. Leaving the version on **Latest published**
+omits it from the request so the backend selects the current published
+snapshot; selecting a version pins the run to that immutable snapshot. The
+dashboard validates JSON and the 256 KiB input limit before submission and
+generates a fresh idempotency key for each deliberate Run action. A successful
+start redirects directly to the new execution.
+
+The detail view loads the execution together with its exact immutable workflow
+version. Nodes are rendered in deterministic topological order, with stable
+node-ID ordering as a fallback for malformed or cyclic historical data. The
+vertical timeline exposes each node's type, status, attempt, timing, input,
+output, error, and linked QueueFlow task or EventForge delivery ID when
+present. Labels and configuration come from the version snapshot, so later
+workflow edits cannot rewrite historical execution context.
+
+Pending and running detail views poll every two seconds while the page is
+visible. Polling pauses in a hidden tab, resumes when visible, and stops as
+soon as the execution becomes terminal. A transient refresh failure preserves
+the last known timeline. Cancellation requires confirmation, refreshes the
+complete detail immediately, and is available only for active executions.
 
 ## API
 
@@ -384,9 +415,13 @@ the execution and every open node `cancelled`; terminal executions return
 already in flight may still finish externally, but cancellation prevents any
 new downstream workflow node from starting.
 
+The dashboard surfaces this best-effort boundary before cancellation. A
+cancelled timeline is the workflow orchestration state, not proof that an
+already-dispatched external task or delivery stopped.
+
 ## Current boundaries
 
 TaskCanvas does not yet implement rollback, arbitrary condition languages,
-distributed DAG scheduling beyond this durable reconciler, execution timeline
-UI, live execution paths, advanced templates, autosave, or collaborative
-editing.
+distributed DAG scheduling beyond this durable reconciler, push-based
+execution updates, advanced templates, autosave, undo/redo, execution replay,
+node retry controls, or collaborative editing.

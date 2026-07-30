@@ -406,6 +406,12 @@ export function WorkflowEditor({
           </div>
         </div>
         <div className="workflow-toolbar-actions">
+          <Link
+            className="button button-quiet"
+            href={`/workflows/${workflow.id}/executions`}
+          >
+            executions
+          </Link>
           <button
             className="button button-quiet"
             onClick={() => setVersionsOpen((open) => !open)}

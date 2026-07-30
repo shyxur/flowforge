@@ -15,6 +15,13 @@ import type {
   WorkflowVersionDetail,
   WorkflowVersionSummary,
 } from "./workflow-types";
+import type {
+  StartWorkflowExecutionRequest,
+  StartWorkflowExecutionResponse,
+  WorkflowExecution,
+  WorkflowExecutionPage,
+  WorkflowExecutionSummary,
+} from "./workflow-execution-types";
 
 export type {
   WebhookDelivery,
@@ -235,6 +242,56 @@ export function getWorkflowVersion(
 ): Promise<WorkflowVersionDetail> {
   return apiFetch<WorkflowVersionDetail>(
     `/v1/workflows/${encodeURIComponent(id)}/versions/${version}`,
+  );
+}
+
+export function startWorkflowExecution(
+  workflowID: string,
+  input: StartWorkflowExecutionRequest,
+  idempotencyKey: string,
+): Promise<StartWorkflowExecutionResponse> {
+  return apiFetch<StartWorkflowExecutionResponse>(
+    `/v1/workflows/${encodeURIComponent(workflowID)}/executions`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+      },
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function listWorkflowExecutions(
+  workflowID: string,
+  input: { status?: string; cursor?: string; limit?: number } = {},
+): Promise<WorkflowExecutionPage> {
+  const query = new URLSearchParams({ limit: String(input.limit ?? 50) });
+  if (input.status) query.set("status", input.status);
+  if (input.cursor) query.set("cursor", input.cursor);
+  const result = await apiFetch<WorkflowExecutionPage>(
+    `/v1/workflows/${encodeURIComponent(workflowID)}/executions?${query}`,
+  );
+  return { ...result, items: result.items ?? [] };
+}
+
+export function getWorkflowExecution(
+  workflowID: string,
+  executionID: string,
+): Promise<WorkflowExecution> {
+  return apiFetch<WorkflowExecution>(
+    `/v1/workflows/${encodeURIComponent(workflowID)}/executions/${encodeURIComponent(executionID)}`,
+  );
+}
+
+export function cancelWorkflowExecution(
+  workflowID: string,
+  executionID: string,
+): Promise<WorkflowExecutionSummary> {
+  return apiFetch<WorkflowExecutionSummary>(
+    `/v1/workflows/${encodeURIComponent(workflowID)}/executions/${encodeURIComponent(executionID)}/cancel`,
+    { method: "POST" },
   );
 }
 

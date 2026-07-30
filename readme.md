@@ -29,8 +29,8 @@ events.
   retries, and delivery logs.
 - Tenant-scoped TaskCanvas workflow drafts, publish-safe graph validation,
   immutable version snapshots, and durable backend execution through
-  QueueFlow/EventForge, with a visual workflow editor MVP for authoring and
-  publishing drafts.
+  QueueFlow/EventForge, with visual authoring plus cursor-paginated execution
+  history and immutable-version node timelines.
 
 ## Architecture
 
@@ -103,6 +103,8 @@ Local endpoints:
 
 - API health: [`http://localhost:8080/healthz`](http://localhost:8080/healthz)
 - Dashboard: [`http://localhost:3000`](http://localhost:3000)
+- TaskCanvas executions:
+  `http://localhost:3000/workflows/{workflow_id}/executions`
 
 Run `make smoke` for the local unit, vet, Compose configuration, dashboard lint,
 and dashboard build checks. It does not start services or run integration tests.
