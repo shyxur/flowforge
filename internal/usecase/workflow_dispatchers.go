@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/shyxur/windylane/internal/domain"
+	metricspkg "github.com/shyxur/windylane/internal/metrics"
 	"github.com/shyxur/windylane/internal/ports"
 )
 
@@ -68,6 +69,14 @@ type EventForgeWorkflowWebhookDispatcher struct {
 	endpoints   ports.WebhookEndpointRepository
 	deliveries  ports.WebhookDeliveryRepository
 	maxAttempts int
+	metrics     ports.MetricRecorder
+}
+
+func (dispatcher *EventForgeWorkflowWebhookDispatcher) WithMetricRecorder(
+	recorder ports.MetricRecorder,
+) *EventForgeWorkflowWebhookDispatcher {
+	dispatcher.metrics = recorder
+	return dispatcher
 }
 
 func NewEventForgeWorkflowWebhookDispatcher(
@@ -152,6 +161,12 @@ func (dispatcher *EventForgeWorkflowWebhookDispatcher) DispatchWorkflowWebhook(
 		}
 		return nil, errors.Join(err, getErr)
 	}
+	metricspkg.Record(dispatcher.metrics, domain.NewMetricEventInput{
+		OrganizationID: delivery.OrgID, Source: domain.MetricSourceEventForge,
+		EventType: domain.MetricDeliveryCreated, ResourceType: domain.MetricResourceWebhookDelivery,
+		ResourceID: delivery.ID.String(), Status: string(delivery.Status),
+		OccurredAt: delivery.CreatedAt, TransitionKey: "created",
+	})
 	return delivery, nil
 }
 

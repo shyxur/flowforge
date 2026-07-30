@@ -23,6 +23,7 @@ import (
 	"github.com/shyxur/windylane/internal/api"
 	redisbroker "github.com/shyxur/windylane/internal/broker/redis"
 	"github.com/shyxur/windylane/internal/domain"
+	metricspkg "github.com/shyxur/windylane/internal/metrics"
 	"github.com/shyxur/windylane/internal/storage/postgres"
 	"github.com/shyxur/windylane/internal/usecase"
 	webhookinfra "github.com/shyxur/windylane/internal/webhook"
@@ -74,7 +75,7 @@ func TestEventForgeLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	if _, err := pool.Exec(ctx, "TRUNCATE workflow_node_executions, workflow_executions, workflow_versions, workflows, webhook_deliveries, webhook_endpoints, tasks, workers"); err != nil {
+	if _, err := pool.Exec(ctx, "TRUNCATE metric_events, workflow_node_executions, workflow_executions, workflow_versions, workflows, webhook_deliveries, webhook_endpoints, tasks, workers"); err != nil {
 		t.Fatal(err)
 	}
 	assertMigrationsAndSeed(t, ctx, pool)
@@ -84,6 +85,14 @@ func TestEventForgeLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer storage.Close()
+	metricRecorder := metricspkg.NewBufferedRecorder(
+		usecase.NewMetricsService(storage),
+		metricspkg.Config{
+			Capacity: 128, BatchSize: 10,
+			FlushInterval: time.Hour, WriteTimeout: time.Second,
+		},
+		zap.NewNop(),
+	)
 	broker := redisbroker.NewRedisBroker(redisAddr, "", 0)
 	defer broker.Close()
 	if err := broker.Client().FlushDB(ctx).Err(); err != nil {
@@ -107,7 +116,8 @@ func TestEventForgeLifecycle(t *testing.T) {
 	cipher := webhookinfra.NewSecretCipher("eventforge-integration-encryption-key")
 	endpointService := usecase.NewWebhookService(storage, cipher, true)
 	deliveryLogService := usecase.NewWebhookDeliveryLogService(storage)
-	eventService := usecase.NewWebhookEventService(storage, storage, 5)
+	eventService := usecase.NewWebhookEventService(storage, storage, 5).
+		WithMetricRecorder(metricRecorder)
 	taskService := usecase.NewService(storage, broker, eventService)
 	handler := api.NewHandler(taskService, zap.NewNop(), endpointService).
 		WithWebhookDeliveryService(deliveryLogService)
@@ -169,7 +179,7 @@ func TestEventForgeLifecycle(t *testing.T) {
 		storage, storage, cipher, signer,
 		webhookinfra.NewHTTPClient(2*time.Second, webhookinfra.DefaultResponseBodyLimit),
 		10, time.Second, time.Minute,
-	)
+	).WithMetricRecorder(metricRecorder)
 	successAttemptAt := time.Now().UTC().Add(time.Second)
 	processed, err := worker.ProcessDue(ctx, successAttemptAt)
 	if err != nil || processed != 1 {
@@ -219,7 +229,8 @@ func TestEventForgeLifecycle(t *testing.T) {
 		t.Fatalf("500 response did not schedule retry: %+v", retrying.Items[0])
 	}
 
-	maxAttemptEventService := usecase.NewWebhookEventService(storage, storage, 1)
+	maxAttemptEventService := usecase.NewWebhookEventService(storage, storage, 1).
+		WithMetricRecorder(metricRecorder)
 	if err := maxAttemptEventService.PublishTaskEvent(
 		ctx, domain.WebhookEventTaskCreated, integrationWebhookTask(orgA),
 	); err != nil {
@@ -290,6 +301,17 @@ func TestEventForgeLifecycle(t *testing.T) {
 			t.Fatal("tenant A delivery list exposed tenant B delivery")
 		}
 	}
+	closeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if err := metricRecorder.Close(closeCtx); err != nil {
+		t.Fatal(err)
+	}
+	assertMetricTypes(
+		t, ctx, storage, orgA, domain.MetricSourceEventForge,
+		domain.MetricDeliveryCreated, domain.MetricDeliveryStarted,
+		domain.MetricDeliverySucceeded, domain.MetricDeliveryFailed,
+		domain.MetricDeliveryRetryScheduled, domain.MetricDeliveryExhausted,
+	)
 }
 
 func createWebhookEndpoint(

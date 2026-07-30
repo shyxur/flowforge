@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	redisbroker "github.com/shyxur/windylane/internal/broker/redis"
 	"github.com/shyxur/windylane/internal/domain"
+	metricspkg "github.com/shyxur/windylane/internal/metrics"
 	"github.com/shyxur/windylane/internal/storage/postgres"
 	"github.com/shyxur/windylane/internal/usecase"
 )
@@ -33,7 +34,7 @@ func TestWorkflowExecutionRepository(t *testing.T) {
 	}
 	defer pool.Close()
 	if _, err := pool.Exec(ctx, `
-		TRUNCATE workflow_node_executions, workflow_executions, workflow_versions, workflows
+		TRUNCATE metric_events, workflow_node_executions, workflow_executions, workflow_versions, workflows
 	`); err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +199,7 @@ func TestWorkflowExecutionLifecycleIntegration(t *testing.T) {
 	}
 	defer pool.Close()
 	if _, err := pool.Exec(ctx, `
-		TRUNCATE workflow_node_executions, workflow_executions, workflow_versions,
+		TRUNCATE metric_events, workflow_node_executions, workflow_executions, workflow_versions,
 			workflows, webhook_deliveries, webhook_endpoints, tasks
 	`); err != nil {
 		t.Fatal(err)
@@ -208,6 +209,14 @@ func TestWorkflowExecutionLifecycleIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer storage.Close()
+	metricRecorder := metricspkg.NewBufferedRecorder(
+		usecase.NewMetricsService(storage),
+		metricspkg.Config{
+			Capacity: 256, BatchSize: 20,
+			FlushInterval: time.Hour, WriteTimeout: time.Second,
+		},
+		nil,
+	)
 	broker := redisbroker.NewRedisBroker(redisAddr, "", 0)
 	defer broker.Close()
 	if err := broker.Client().FlushDB(ctx).Err(); err != nil {
@@ -216,13 +225,14 @@ func TestWorkflowExecutionLifecycleIntegration(t *testing.T) {
 
 	orgID := uuid.MustParse(devOrgID)
 	workflowService := usecase.NewWorkflowService(storage)
-	taskService := usecase.NewService(storage, broker)
+	taskService := usecase.NewService(storage, broker).WithMetricRecorder(metricRecorder)
 	executionService := usecase.NewWorkflowExecutionService(
 		storage,
 		storage,
 		usecase.NewQueueFlowWorkflowTaskDispatcher(taskService),
-		usecase.NewEventForgeWorkflowWebhookDispatcher(storage, storage, 3),
-	)
+		usecase.NewEventForgeWorkflowWebhookDispatcher(storage, storage, 3).
+			WithMetricRecorder(metricRecorder),
+	).WithMetricRecorder(metricRecorder)
 
 	linearDefinition := json.RawMessage(`{
 		"nodes": [
@@ -551,4 +561,16 @@ func TestWorkflowExecutionLifecycleIntegration(t *testing.T) {
 	if err != nil || webhookDetail.Status != domain.WorkflowExecutionSucceeded {
 		t.Fatalf("webhook terminal detail = %+v err=%v", webhookDetail, err)
 	}
+	closeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if err := metricRecorder.Close(closeCtx); err != nil {
+		t.Fatal(err)
+	}
+	assertMetricTypes(
+		t, ctx, storage, orgID, domain.MetricSourceTaskCanvas,
+		domain.MetricWorkflowExecutionCreated, domain.MetricWorkflowExecutionStarted,
+		domain.MetricWorkflowExecutionSucceeded, domain.MetricWorkflowExecutionCancelled,
+		domain.MetricNodeExecutionStarted, domain.MetricNodeExecutionSucceeded,
+		domain.MetricNodeExecutionSkipped, domain.MetricNodeExecutionCancelled,
+	)
 }

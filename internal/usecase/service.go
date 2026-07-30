@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/shyxur/windylane/internal/domain"
+	metricspkg "github.com/shyxur/windylane/internal/metrics"
 	"github.com/shyxur/windylane/internal/ports"
 )
 
@@ -17,6 +18,12 @@ type Service struct {
 	storage        ports.Storage
 	broker         ports.Broker
 	eventPublisher ports.TaskEventPublisher
+	metrics        ports.MetricRecorder
+}
+
+func (s *Service) WithMetricRecorder(recorder ports.MetricRecorder) *Service {
+	s.metrics = recorder
+	return s
 }
 
 func NewService(storage ports.Storage, broker ports.Broker, eventPublishers ...ports.TaskEventPublisher) *Service {
@@ -87,6 +94,12 @@ func (s *Service) CreateTask(ctx context.Context, input CreateTaskInput) (*domai
 		}
 		return nil, false, err
 	}
+	metricspkg.Record(s.metrics, domain.NewMetricEventInput{
+		OrganizationID: task.OrgID, Source: domain.MetricSourceQueueFlow,
+		EventType: domain.MetricTaskIngested, ResourceType: domain.MetricResourceTask,
+		ResourceID: task.ID.String(), Queue: task.Queue, Status: string(task.Status),
+		OccurredAt: task.CreatedAt, TransitionKey: "created",
+	})
 	s.publishTaskEvent(ctx, domain.WebhookEventTaskCreated, task)
 
 	now := time.Now().UTC()
@@ -139,6 +152,12 @@ func (s *Service) CancelTask(ctx context.Context, orgID, id uuid.UUID) (*domain.
 		return nil, err
 	}
 	_ = s.broker.Remove(ctx, orgID, task.Queue, task.ID)
+	metricspkg.Record(s.metrics, domain.NewMetricEventInput{
+		OrganizationID: task.OrgID, Source: domain.MetricSourceQueueFlow,
+		EventType: domain.MetricTaskCancelled, ResourceType: domain.MetricResourceTask,
+		ResourceID: task.ID.String(), Queue: task.Queue, Status: string(task.Status),
+		OccurredAt: task.UpdatedAt, TransitionKey: "cancelled",
+	})
 	s.publishTaskEvent(ctx, domain.WebhookEventTaskCancelled, task)
 	return task, nil
 }

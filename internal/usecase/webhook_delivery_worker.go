@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/shyxur/windylane/internal/domain"
+	metricspkg "github.com/shyxur/windylane/internal/metrics"
 	"github.com/shyxur/windylane/internal/ports"
 )
 
@@ -20,6 +21,12 @@ type WebhookDeliveryWorker struct {
 	batchSize      int
 	initialBackoff time.Duration
 	maxBackoff     time.Duration
+	metrics        ports.MetricRecorder
+}
+
+func (worker *WebhookDeliveryWorker) WithMetricRecorder(recorder ports.MetricRecorder) *WebhookDeliveryWorker {
+	worker.metrics = recorder
+	return worker
 }
 
 func NewWebhookDeliveryWorker(
@@ -54,6 +61,7 @@ func (worker *WebhookDeliveryWorker) ProcessDue(ctx context.Context, now time.Ti
 	}
 	var processErrors []error
 	for _, delivery := range deliveries {
+		worker.recordMetric(delivery, domain.MetricDeliveryStarted, now, "")
 		if err := worker.process(ctx, delivery, now); err != nil {
 			processErrors = append(processErrors, err)
 		}
@@ -102,7 +110,11 @@ func (worker *WebhookDeliveryWorker) process(ctx context.Context, delivery *doma
 	delivery.ResponseBody = &response.Body
 	delivery.LastError = nil
 	delivery.UpdatedAt = now
-	return worker.deliveries.UpdateWebhookDelivery(ctx, delivery)
+	if err := worker.deliveries.UpdateWebhookDelivery(ctx, delivery); err != nil {
+		return err
+	}
+	worker.recordMetric(delivery, domain.MetricDeliverySucceeded, now, "")
+	return nil
 }
 
 func (worker *WebhookDeliveryWorker) recordFailure(
@@ -133,7 +145,31 @@ func (worker *WebhookDeliveryWorker) recordFailure(
 	if err := worker.deliveries.UpdateWebhookDelivery(ctx, delivery); err != nil {
 		return errors.Join(deliveryErr, err)
 	}
+	worker.recordMetric(delivery, domain.MetricDeliveryFailed, now, "delivery_error")
+	if delivery.Status == domain.WebhookDeliveryFailed {
+		worker.recordMetric(delivery, domain.MetricDeliveryExhausted, now, "delivery_error")
+	} else {
+		worker.recordMetric(delivery, domain.MetricDeliveryRetryScheduled, now, "delivery_error")
+	}
 	return nil
+}
+
+func (worker *WebhookDeliveryWorker) recordMetric(
+	delivery *domain.WebhookDelivery,
+	eventType domain.MetricEventType,
+	now time.Time,
+	errorCode string,
+) {
+	attempt, maxAttempts := delivery.AttemptCount, delivery.MaxAttempts
+	metricspkg.Record(worker.metrics, domain.NewMetricEventInput{
+		OrganizationID: delivery.OrgID, Source: domain.MetricSourceEventForge,
+		EventType: eventType, ResourceType: domain.MetricResourceWebhookDelivery,
+		ResourceID: delivery.ID.String(), Status: string(delivery.Status), OccurredAt: now,
+		Metadata: domain.MetricMetadata{
+			Attempt: &attempt, MaxAttempts: &maxAttempts, ErrorCode: errorCode,
+		},
+		TransitionKey: domain.MetricTransitionKey(delivery.AttemptCount, eventType),
+	})
 }
 
 func (worker *WebhookDeliveryWorker) backoff(attempt int) time.Duration {

@@ -19,6 +19,9 @@ func main() {
 	}
 	ctx := context.Background()
 	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		fatal(err)
+	}
 	storage, err := postgres.NewPostgresStorage(ctx, cfg.DBDSN)
 	if err != nil {
 		fatal(err)

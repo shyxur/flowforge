@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/shyxur/windylane/internal/config"
+	metricspkg "github.com/shyxur/windylane/internal/metrics"
+	"github.com/shyxur/windylane/internal/ports"
 	"github.com/shyxur/windylane/internal/storage/postgres"
 	"github.com/shyxur/windylane/internal/usecase"
 	webhookinfra "github.com/shyxur/windylane/internal/webhook"
@@ -17,12 +19,35 @@ func main() {
 	defer logger.Sync()
 
 	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		logger.Fatal("invalid configuration", zap.Error(err))
+	}
 	ctx := context.Background()
 	storage, err := postgres.NewPostgresStorage(ctx, cfg.DBDSN)
 	if err != nil {
 		logger.Fatal("failed to connect to postgres", zap.Error(err))
 	}
 	defer storage.Close()
+	var metricRecorder ports.MetricRecorder
+	var bufferedMetrics *metricspkg.BufferedRecorder
+	if cfg.MetricsEnabled {
+		bufferedMetrics = metricspkg.NewBufferedRecorder(
+			usecase.NewMetricsService(storage),
+			metricspkg.Config{
+				Capacity: cfg.MetricsBufferCapacity, BatchSize: cfg.MetricsBatchSize,
+				FlushInterval: cfg.MetricsFlushInterval, WriteTimeout: cfg.MetricsWriteTimeout,
+			},
+			logger,
+		)
+		metricRecorder = bufferedMetrics
+		defer func() {
+			closeCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+			defer cancel()
+			if err := bufferedMetrics.Close(closeCtx); err != nil {
+				logger.Warn("metrics shutdown incomplete", zap.Error(err))
+			}
+		}()
+	}
 
 	secretCipher := webhookinfra.NewSecretCipher(cfg.WebhookSecretEncryptionKey)
 	deliveryWorker := usecase.NewWebhookDeliveryWorker(
@@ -34,7 +59,7 @@ func main() {
 		cfg.WebhookDeliveryBatchSize,
 		cfg.WebhookDeliveryInitialBackoff,
 		cfg.WebhookDeliveryMaxBackoff,
-	)
+	).WithMetricRecorder(metricRecorder)
 
 	runCtx, stop := worker.ContextWithSignals(ctx, logger)
 	defer stop()

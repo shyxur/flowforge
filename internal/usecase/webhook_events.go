@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/shyxur/windylane/internal/domain"
+	metricspkg "github.com/shyxur/windylane/internal/metrics"
 	"github.com/shyxur/windylane/internal/ports"
 )
 
@@ -16,6 +17,12 @@ type WebhookEventService struct {
 	endpoints   ports.WebhookEndpointRepository
 	deliveries  ports.WebhookDeliveryRepository
 	maxAttempts int
+	metrics     ports.MetricRecorder
+}
+
+func (service *WebhookEventService) WithMetricRecorder(recorder ports.MetricRecorder) *WebhookEventService {
+	service.metrics = recorder
+	return service
 }
 
 func NewWebhookEventService(
@@ -69,7 +76,14 @@ func (service *WebhookEventService) PublishTaskEvent(
 		}
 		if err := service.deliveries.CreateWebhookDelivery(ctx, delivery); err != nil {
 			publishErrors = append(publishErrors, err)
+			continue
 		}
+		metricspkg.Record(service.metrics, domain.NewMetricEventInput{
+			OrganizationID: delivery.OrgID, Source: domain.MetricSourceEventForge,
+			EventType: domain.MetricDeliveryCreated, ResourceType: domain.MetricResourceWebhookDelivery,
+			ResourceID: delivery.ID.String(), Status: string(delivery.Status),
+			OccurredAt: delivery.CreatedAt, TransitionKey: "created",
+		})
 	}
 	return errors.Join(publishErrors...)
 }

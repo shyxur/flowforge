@@ -8,14 +8,16 @@ windylane is a self-hosted control plane for distributed task execution and
 webhook delivery, built with Go, Postgres, Redis, Next.js, and Tailwind CSS.
 The product target is [`windylane.dev`](https://windylane.dev).
 
-Current release: [`v0.5.0 — TaskCanvas`](./docs/releases/v0.5.0.md)
+Current release: [`v0.5.0`](https://github.com/shyxur/windylane/releases/tag/v0.5.0)
+([release notes](docs/releases/v0.5.0.md)).
 
 QueueFlow provides a multi-tenant, at-least-once task queue. Postgres is the
 durable source of truth; Redis handles priority-aware dispatch and hot state.
 EventForge adds tenant-scoped, signed webhook delivery for task lifecycle
 events. TaskCanvas adds tenant-scoped visual workflow authoring, immutable
 publishing, durable execution, and node-level timeline inspection. QueueLens
-analytics are not implemented yet.
+is in progress: its M1 foundation durably captures tenant-scoped lifecycle
+metrics, while analytics APIs and dashboards remain future work.
 
 ## Core features
 
@@ -33,6 +35,8 @@ analytics are not implemented yet.
   immutable version snapshots, and durable backend execution through
   QueueFlow/EventForge, with visual authoring plus cursor-paginated execution
   history, immutable-version node timelines, recovery, and cancellation.
+- Bounded, non-blocking QueueLens lifecycle instrumentation with deterministic
+  deduplication and append-only, tenant-scoped Postgres metric events.
 
 ## Architecture
 
@@ -57,6 +61,7 @@ Worker pool
 - `internal/storage/postgres`: tenant-scoped durable state.
 - `internal/broker/redis`: pending, processing, delayed and DLQ transport.
 - `internal/engine`, `internal/worker`: execution, retry, reclaim and shutdown.
+- `internal/metrics`: bounded metric batching and failure isolation.
 
 TaskCanvas stores mutable drafts separately from immutable published versions.
 Its reconciler advances durable node execution records, dispatches task nodes
@@ -283,6 +288,16 @@ node timelines, visibility-aware polling, and cancellation. It does not
 provide autosave, replay, manual node retry, collaborative editing, an
 arbitrary condition language, or QueueLens analytics.
 
+### QueueLens metrics
+
+QueueLens M1 records QueueFlow task, EventForge delivery, TaskCanvas
+execution/node, and worker lifecycle events without extending business
+transactions. Metric writes use a bounded non-blocking producer and
+deterministic identities; a Postgres outage cannot fail the instrumented
+business operation. There is no public metrics endpoint or analytics dashboard
+yet. See [QueueLens metrics foundations](docs/queuelens.md) for the event
+catalog, privacy rules, storage/query model, configuration, and current limits.
+
 ## Worker lifecycle
 
 1. The producer inserts the task in Postgres.
@@ -420,7 +435,8 @@ generated or mock screenshots are not product evidence.
   visual builder, graph validation, immutable publishing, durable execution,
   execution timelines, recovery, and cancellation.
 - [ ] Phase 4 — QueueLens observability, metrics, and throughput analytics
-  (next; not implemented).
+  (in progress: M1 metrics foundations complete; analytics APIs, aggregation,
+  and dashboards remain).
 
 ## License and brand policy
 

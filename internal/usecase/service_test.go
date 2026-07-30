@@ -30,7 +30,8 @@ func TestCreateTaskIdempotencyFingerprint(t *testing.T) {
 			return nil
 		},
 	}
-	service := NewService(storage, &testutil.BrokerStub{})
+	metrics := &metricRecorderSpy{}
+	service := NewService(storage, &testutil.BrokerStub{}).WithMetricRecorder(metrics)
 	input := CreateTaskInput{
 		OrgID: orgID, IdempotencyKey: "charge-1", Queue: "billing",
 		Payload: json.RawMessage(`{"amount":42}`), MaxRetries: 2,
@@ -41,6 +42,9 @@ func TestCreateTaskIdempotencyFingerprint(t *testing.T) {
 	first, replay, err := service.CreateTask(context.Background(), input)
 	if err != nil || replay {
 		t.Fatalf("first create: replay=%v err=%v", replay, err)
+	}
+	if !metrics.has(domain.MetricTaskIngested) {
+		t.Fatal("task ingestion metric was not recorded")
 	}
 	second, replay, err := service.CreateTask(context.Background(), input)
 	if err != nil || !replay || second.ID != first.ID {

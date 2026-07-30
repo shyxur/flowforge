@@ -15,6 +15,7 @@ import (
 	redisbroker "github.com/shyxur/windylane/internal/broker/redis"
 	"github.com/shyxur/windylane/internal/domain"
 	"github.com/shyxur/windylane/internal/engine"
+	metricspkg "github.com/shyxur/windylane/internal/metrics"
 	"github.com/shyxur/windylane/internal/storage/postgres"
 	"github.com/shyxur/windylane/internal/usecase"
 	"go.uber.org/zap"
@@ -46,7 +47,7 @@ func TestQueueFlowLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	if _, err := pool.Exec(ctx, "TRUNCATE workflow_node_executions, workflow_executions, workflow_versions, workflows, webhook_deliveries, webhook_endpoints, tasks, workers"); err != nil {
+	if _, err := pool.Exec(ctx, "TRUNCATE metric_events, workflow_node_executions, workflow_executions, workflow_versions, workflows, webhook_deliveries, webhook_endpoints, tasks, workers"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -57,6 +58,14 @@ func TestQueueFlowLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer storage.Close()
+	metricRecorder := metricspkg.NewBufferedRecorder(
+		usecase.NewMetricsService(storage),
+		metricspkg.Config{
+			Capacity: 128, BatchSize: 10,
+			FlushInterval: time.Hour, WriteTimeout: time.Second,
+		},
+		zap.NewNop(),
+	)
 	broker := redisbroker.NewRedisBroker(redisAddr, "", 0)
 	defer broker.Close()
 	if err := broker.Client().FlushDB(ctx).Err(); err != nil {
@@ -65,7 +74,7 @@ func TestQueueFlowLifecycle(t *testing.T) {
 
 	orgID := uuid.MustParse(devOrgID)
 	queue := "integration-" + uuid.NewString()[:8]
-	service := usecase.NewService(storage, broker)
+	service := usecase.NewService(storage, broker).WithMetricRecorder(metricRecorder)
 	input := usecase.CreateTaskInput{
 		OrgID: orgID, IdempotencyKey: "integration-idempotency", Queue: queue,
 		Payload: json.RawMessage(`{"kind":"integration"}`), MaxRetries: 0,
@@ -103,7 +112,9 @@ func TestQueueFlowLifecycle(t *testing.T) {
 		t.Fatalf("claim state = %s attempts=%d", claimed.Status, claimed.Attempts)
 	}
 
-	eng := engine.NewEngine(storage, broker, domain.DefaultRetryPolicy(), time.Second, zap.NewNop())
+	eng := engine.NewEngine(storage, broker, domain.DefaultRetryPolicy(), time.Second, zap.NewNop()).
+		WithMetricRecorder(metricRecorder)
+	eng.PublishProcessingEvent(ctx, claimed)
 	result := eng.Execute(ctx, claimed, "integration-worker", failingHandler{queue: queue})
 	if result.Outcome != "dead_letter" {
 		t.Fatalf("engine outcome = %s, err=%v", result.Outcome, result.Err)
@@ -126,6 +137,16 @@ func TestQueueFlowLifecycle(t *testing.T) {
 	}
 
 	testWebhookRepositories(t, ctx, storage, orgID)
+	closeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if err := metricRecorder.Close(closeCtx); err != nil {
+		t.Fatal(err)
+	}
+	assertMetricTypes(
+		t, ctx, storage, orgID, domain.MetricSourceQueueFlow,
+		domain.MetricTaskIngested, domain.MetricTaskStarted, domain.MetricTaskFailed,
+		domain.MetricTaskDeadLettered,
+	)
 }
 
 func testWebhookRepositories(t *testing.T, ctx context.Context, storage *postgres.PostgresStorage, orgID uuid.UUID) {
@@ -208,7 +229,7 @@ func assertMigrationsAndSeed(t *testing.T, ctx context.Context, pool *pgxpool.Po
 	if err := pool.QueryRow(ctx, "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil {
 		t.Fatal(err)
 	}
-	if version != 8 || dirty {
+	if version != 9 || dirty {
 		t.Fatalf("migration version=%d dirty=%v", version, dirty)
 	}
 	var orgCount, keyCount int

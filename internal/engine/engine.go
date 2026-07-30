@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/shyxur/windylane/internal/domain"
+	metricspkg "github.com/shyxur/windylane/internal/metrics"
 	"github.com/shyxur/windylane/internal/ports"
 	"go.uber.org/zap"
 )
@@ -21,6 +22,12 @@ type Engine struct {
 	taskTimeout time.Duration // per-task execution deadline
 	events      ports.TaskEventPublisher
 	logger      *zap.Logger
+	metrics     ports.MetricRecorder
+}
+
+func (e *Engine) WithMetricRecorder(recorder ports.MetricRecorder) *Engine {
+	e.metrics = recorder
+	return e
 }
 
 func NewEngine(storage ports.Storage, broker ports.Broker, retryPolicy domain.RetryPolicy, taskTimeout time.Duration, logger *zap.Logger, eventPublishers ...ports.TaskEventPublisher) *Engine {
@@ -64,8 +71,9 @@ func (e *Engine) Execute(ctx context.Context, task *domain.Task, workerID string
 			return Result{TaskID: task.ID, Outcome: "completed", Err: ackErr}
 		}
 		task.Status = domain.StatusCompleted
-		task.UpdatedAt = now
 		task.CompletedAt = &now
+		e.recordTaskMetric(task, domain.MetricTaskSucceeded, now, "")
+		task.UpdatedAt = now
 		e.publishTaskEvent(ctx, domain.WebhookEventTaskCompleted, task)
 		if ackErr := e.broker.Ack(ctx, task.OrgID, task.Queue, task.ID); ackErr != nil {
 			e.logger.Warn("engine: broker ack failed (storage already completed)", zap.Error(ackErr))
@@ -111,6 +119,8 @@ func (e *Engine) handleFailure(ctx context.Context, task *domain.Task, execErr e
 			return Result{TaskID: task.ID, Outcome: "dead_letter", Err: err}
 		}
 		task.Status = domain.StatusDeadLetter
+		e.recordTaskMetric(task, domain.MetricTaskFailed, now, "handler_error")
+		e.recordTaskMetric(task, domain.MetricTaskDeadLettered, now, "handler_error")
 		task.UpdatedAt = now
 		e.publishTaskEvent(ctx, domain.WebhookEventTaskDeadLetter, task)
 		if err := e.broker.MoveToDeadLetter(ctx, task.OrgID, task.Queue, task.ID); err != nil {
@@ -130,6 +140,8 @@ func (e *Engine) handleFailure(ctx context.Context, task *domain.Task, execErr e
 	}
 	task.Status = domain.StatusPending
 	task.VisibleAt = visibleAt
+	e.recordTaskMetric(task, domain.MetricTaskFailed, now, "handler_error")
+	e.recordTaskMetric(task, domain.MetricTaskRetryScheduled, now, "handler_error")
 	task.UpdatedAt = now
 	e.publishTaskEvent(ctx, domain.WebhookEventTaskFailed, task)
 	if err := e.broker.Nack(ctx, task.OrgID, task.Queue, task.ID, backoff); err != nil {
@@ -144,7 +156,38 @@ func (e *Engine) handleFailure(ctx context.Context, task *domain.Task, execErr e
 }
 
 func (e *Engine) PublishProcessingEvent(ctx context.Context, task *domain.Task) {
+	e.recordTaskMetric(task, domain.MetricTaskStarted, time.Now().UTC(), "")
 	e.publishTaskEvent(ctx, domain.WebhookEventTaskProcessing, task)
+}
+
+func (e *Engine) recordTaskMetric(
+	task *domain.Task,
+	eventType domain.MetricEventType,
+	now time.Time,
+	errorCode string,
+) {
+	if task == nil {
+		return
+	}
+	attempt, maxAttempts := task.Attempts, task.MaxAttempts
+	var durationMS *int64
+	if eventType == domain.MetricTaskSucceeded || eventType == domain.MetricTaskFailed {
+		value := now.Sub(task.UpdatedAt).Milliseconds()
+		if value < 0 {
+			value = 0
+		}
+		durationMS = &value
+	}
+	metricspkg.Record(e.metrics, domain.NewMetricEventInput{
+		OrganizationID: task.OrgID, Source: domain.MetricSourceQueueFlow,
+		EventType: eventType, ResourceType: domain.MetricResourceTask,
+		ResourceID: task.ID.String(), Queue: task.Queue, Status: string(task.Status),
+		DurationMS: durationMS, OccurredAt: now,
+		Metadata: domain.MetricMetadata{
+			Attempt: &attempt, MaxAttempts: &maxAttempts, ErrorCode: errorCode,
+		},
+		TransitionKey: domain.MetricTransitionKey(task.Attempts, eventType),
+	})
 }
 
 func (e *Engine) publishTaskEvent(ctx context.Context, eventType domain.WebhookEventType, task *domain.Task) {

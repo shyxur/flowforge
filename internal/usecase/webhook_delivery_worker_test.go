@@ -59,10 +59,11 @@ func TestWebhookDeliveryWorkerMarks2xxDeliveredAndSendsSignedHeaders(t *testing.
 		return &ports.WebhookHTTPResponse{StatusCode: 204, Body: "ok"}, nil
 	})
 
+	metrics := &metricRecorderSpy{}
 	worker := NewWebhookDeliveryWorker(
 		endpointRepository, deliveryRepository, cipher, signer, client,
 		10, time.Second, time.Minute,
-	)
+	).WithMetricRecorder(metrics)
 	count, err := worker.ProcessDue(context.Background(), now)
 	if err != nil || count != 1 {
 		t.Fatalf("process count=%d err=%v", count, err)
@@ -71,6 +72,9 @@ func TestWebhookDeliveryWorkerMarks2xxDeliveredAndSendsSignedHeaders(t *testing.
 		updated.ResponseStatus == nil || *updated.ResponseStatus != 204 ||
 		updated.NextAttemptAt != nil || updated.LastError != nil {
 		t.Fatalf("updated delivery = %+v", updated)
+	}
+	if !metrics.has(domain.MetricDeliveryStarted) || !metrics.has(domain.MetricDeliverySucceeded) {
+		t.Fatal("delivery success lifecycle metrics were not recorded")
 	}
 }
 
@@ -135,6 +139,7 @@ func TestWebhookDeliveryWorkerMarksFailedAtMaxAttempts(t *testing.T) {
 		t.Fatal(err)
 	}
 	var updated *domain.WebhookDelivery
+	metrics := &metricRecorderSpy{}
 	worker := NewWebhookDeliveryWorker(
 		&testutil.WebhookEndpointRepositoryStub{
 			GetFunc: func(context.Context, uuid.UUID, uuid.UUID) (*domain.WebhookEndpoint, error) {
@@ -151,13 +156,16 @@ func TestWebhookDeliveryWorkerMarksFailedAtMaxAttempts(t *testing.T) {
 			return &ports.WebhookHTTPResponse{StatusCode: 503, Body: "unavailable"}, nil
 		}),
 		10, time.Second, time.Minute,
-	)
+	).WithMetricRecorder(metrics)
 	if _, err := worker.ProcessDue(context.Background(), now); err != nil {
 		t.Fatal(err)
 	}
 	if updated.Status != domain.WebhookDeliveryFailed || updated.NextAttemptAt != nil ||
 		updated.AttemptCount != updated.MaxAttempts {
 		t.Fatalf("updated delivery = %+v", updated)
+	}
+	if !metrics.has(domain.MetricDeliveryFailed) || !metrics.has(domain.MetricDeliveryExhausted) {
+		t.Fatal("delivery exhausted lifecycle metrics were not recorded")
 	}
 }
 

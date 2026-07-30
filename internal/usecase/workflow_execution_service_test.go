@@ -391,7 +391,9 @@ func TestWorkflowExecutionLinearTaskAndIdempotency(t *testing.T) {
 	workflow, version := publishedExecutionTestWorkflow(orgID, workflowID, definition)
 	memory := newWorkflowExecutionMemory(workflow, version)
 	tasks := newWorkflowTaskDispatcherFake()
-	service := NewWorkflowExecutionService(memory, memory, tasks, workflowWebhookDispatcherFake{})
+	metrics := &metricRecorderSpy{}
+	service := NewWorkflowExecutionService(memory, memory, tasks, workflowWebhookDispatcherFake{}).
+		WithMetricRecorder(metrics)
 
 	result, reused, err := service.StartExecution(context.Background(), StartWorkflowExecutionInput{
 		OrgID: orgID, WorkflowID: workflowID, Input: json.RawMessage(`{"customer":"one"}`),
@@ -417,6 +419,13 @@ func TestWorkflowExecutionLinearTaskAndIdempotency(t *testing.T) {
 	if detail.Status != domain.WorkflowExecutionSucceeded ||
 		statusForExecutionNode(detail.Nodes, "task") != domain.WorkflowNodeSucceeded {
 		t.Fatalf("completed detail = %+v", detail)
+	}
+	if !metrics.has(domain.MetricWorkflowExecutionCreated) ||
+		!metrics.has(domain.MetricWorkflowExecutionStarted) ||
+		!metrics.has(domain.MetricWorkflowExecutionSucceeded) ||
+		!metrics.has(domain.MetricNodeExecutionStarted) ||
+		!metrics.has(domain.MetricNodeExecutionSucceeded) {
+		t.Fatal("workflow success lifecycle metrics were not recorded")
 	}
 
 	duplicate, reused, err := service.StartExecution(context.Background(), StartWorkflowExecutionInput{
@@ -457,7 +466,9 @@ func TestWorkflowExecutionConditionSkipsInactiveBranch(t *testing.T) {
 	workflow, version := publishedExecutionTestWorkflow(orgID, workflowID, definition)
 	memory := newWorkflowExecutionMemory(workflow, version)
 	tasks := newWorkflowTaskDispatcherFake()
-	service := NewWorkflowExecutionService(memory, memory, tasks, workflowWebhookDispatcherFake{})
+	metrics := &metricRecorderSpy{}
+	service := NewWorkflowExecutionService(memory, memory, tasks, workflowWebhookDispatcherFake{}).
+		WithMetricRecorder(metrics)
 	result, _, err := service.StartExecution(context.Background(), StartWorkflowExecutionInput{
 		OrgID: orgID, WorkflowID: workflowID, Input: json.RawMessage(`{"status":"paid"}`),
 		IdempotencyKey: "condition",
@@ -470,6 +481,9 @@ func TestWorkflowExecutionConditionSkipsInactiveBranch(t *testing.T) {
 		statusForExecutionNode(detail.Nodes, "no") != domain.WorkflowNodeSkipped ||
 		tasks.dispatchCount != 1 {
 		t.Fatalf("condition detail = %+v dispatches=%d", detail, tasks.dispatchCount)
+	}
+	if !metrics.has(domain.MetricNodeExecutionSkipped) {
+		t.Fatal("node skipped metric was not recorded")
 	}
 }
 
@@ -489,7 +503,9 @@ func TestWorkflowExecutionTaskFailureFailsExecution(t *testing.T) {
 	workflow, version := publishedExecutionTestWorkflow(orgID, workflowID, definition)
 	memory := newWorkflowExecutionMemory(workflow, version)
 	tasks := newWorkflowTaskDispatcherFake()
-	service := NewWorkflowExecutionService(memory, memory, tasks, workflowWebhookDispatcherFake{})
+	metrics := &metricRecorderSpy{}
+	service := NewWorkflowExecutionService(memory, memory, tasks, workflowWebhookDispatcherFake{}).
+		WithMetricRecorder(metrics)
 	result, _, err := service.StartExecution(context.Background(), StartWorkflowExecutionInput{
 		OrgID: orgID, WorkflowID: workflowID, IdempotencyKey: "failure",
 	})
@@ -507,6 +523,11 @@ func TestWorkflowExecutionTaskFailureFailsExecution(t *testing.T) {
 		statusForExecutionNode(detail.Nodes, "after") != domain.WorkflowNodeCancelled ||
 		tasks.dispatchCount != 1 {
 		t.Fatalf("failed detail = %+v dispatches=%d", detail, tasks.dispatchCount)
+	}
+	if !metrics.has(domain.MetricNodeExecutionFailed) ||
+		!metrics.has(domain.MetricWorkflowExecutionFailed) ||
+		!metrics.has(domain.MetricNodeExecutionCancelled) {
+		t.Fatal("workflow failure lifecycle metrics were not recorded")
 	}
 }
 
@@ -562,7 +583,9 @@ func TestWorkflowExecutionDraftAndCancellation(t *testing.T) {
 	}
 	workflow, version := publishedExecutionTestWorkflow(orgID, workflowID, definition)
 	memory := newWorkflowExecutionMemory(workflow, version)
-	service := NewWorkflowExecutionService(memory, memory, newWorkflowTaskDispatcherFake(), workflowWebhookDispatcherFake{})
+	metrics := &metricRecorderSpy{}
+	service := NewWorkflowExecutionService(memory, memory, newWorkflowTaskDispatcherFake(), workflowWebhookDispatcherFake{}).
+		WithMetricRecorder(metrics)
 	workflow.Status = domain.WorkflowStatusDraft
 	memory.workflows[workflowID] = cloneExecutionTestValue(workflow)
 	if _, _, err := service.StartExecution(context.Background(), StartWorkflowExecutionInput{
@@ -581,6 +604,10 @@ func TestWorkflowExecutionDraftAndCancellation(t *testing.T) {
 	cancelled, err := service.CancelExecution(context.Background(), orgID, workflowID, result.ExecutionID)
 	if err != nil || cancelled.Status != domain.WorkflowExecutionCancelled {
 		t.Fatalf("cancelled = %+v err=%v", cancelled, err)
+	}
+	if !metrics.has(domain.MetricWorkflowExecutionCancelled) ||
+		!metrics.has(domain.MetricNodeExecutionCancelled) {
+		t.Fatal("workflow cancellation metrics were not recorded")
 	}
 	if _, err := service.CancelExecution(context.Background(), orgID, workflowID, result.ExecutionID); !errors.Is(err, domain.ErrWorkflowExecutionTerminal) {
 		t.Fatalf("terminal cancel error = %v", err)

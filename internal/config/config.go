@@ -1,6 +1,9 @@
 package config
 
 import (
+	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -34,6 +37,12 @@ type Config struct {
 	WebhookDeliveryInitialBackoff time.Duration
 	WebhookDeliveryMaxBackoff     time.Duration
 	WorkflowReconcileInterval     time.Duration
+	MetricsEnabled                bool
+	MetricsBatchSize              int
+	MetricsFlushInterval          time.Duration
+	MetricsBufferCapacity         int
+	MetricsWriteTimeout           time.Duration
+	metricsEnabledRaw             string
 }
 
 func Load() *Config {
@@ -68,6 +77,11 @@ func Load() *Config {
 	v.SetDefault("WEBHOOK_DELIVERY_INITIAL_BACKOFF_SEC", 5)
 	v.SetDefault("WEBHOOK_DELIVERY_MAX_BACKOFF_SEC", 3600)
 	v.SetDefault("WORKFLOW_RECONCILE_INTERVAL_SEC", 1)
+	v.SetDefault("METRICS_ENABLED", true)
+	v.SetDefault("METRICS_BATCH_SIZE", 100)
+	v.SetDefault("METRICS_FLUSH_INTERVAL_SEC", 1)
+	v.SetDefault("METRICS_BUFFER_CAPACITY", 2048)
+	v.SetDefault("METRICS_WRITE_TIMEOUT_SEC", 5)
 
 	return &Config{
 		DBDSN:                         v.GetString("DB_DSN"),
@@ -97,5 +111,34 @@ func Load() *Config {
 		WebhookDeliveryInitialBackoff: time.Duration(v.GetInt("WEBHOOK_DELIVERY_INITIAL_BACKOFF_SEC")) * time.Second,
 		WebhookDeliveryMaxBackoff:     time.Duration(v.GetInt("WEBHOOK_DELIVERY_MAX_BACKOFF_SEC")) * time.Second,
 		WorkflowReconcileInterval:     time.Duration(v.GetInt("WORKFLOW_RECONCILE_INTERVAL_SEC")) * time.Second,
+		MetricsEnabled:                v.GetBool("METRICS_ENABLED"),
+		MetricsBatchSize:              v.GetInt("METRICS_BATCH_SIZE"),
+		MetricsFlushInterval:          time.Duration(v.GetInt("METRICS_FLUSH_INTERVAL_SEC")) * time.Second,
+		MetricsBufferCapacity:         v.GetInt("METRICS_BUFFER_CAPACITY"),
+		MetricsWriteTimeout:           time.Duration(v.GetInt("METRICS_WRITE_TIMEOUT_SEC")) * time.Second,
+		metricsEnabledRaw:             v.GetString("METRICS_ENABLED"),
 	}
+}
+
+func (cfg *Config) Validate() error {
+	if _, err := strconv.ParseBool(strings.TrimSpace(cfg.metricsEnabledRaw)); err != nil {
+		return fmt.Errorf("METRICS_ENABLED must be a boolean")
+	}
+	if !cfg.MetricsEnabled {
+		return nil
+	}
+	if cfg.MetricsBufferCapacity < 1 || cfg.MetricsBufferCapacity > 100000 {
+		return fmt.Errorf("METRICS_BUFFER_CAPACITY must be between 1 and 100000")
+	}
+	if cfg.MetricsBatchSize < 1 || cfg.MetricsBatchSize > 1000 ||
+		cfg.MetricsBatchSize > cfg.MetricsBufferCapacity {
+		return fmt.Errorf("METRICS_BATCH_SIZE must be between 1 and min(1000, METRICS_BUFFER_CAPACITY)")
+	}
+	if cfg.MetricsFlushInterval < time.Second || cfg.MetricsFlushInterval > time.Minute {
+		return fmt.Errorf("METRICS_FLUSH_INTERVAL_SEC must be between 1 and 60")
+	}
+	if cfg.MetricsWriteTimeout < time.Second || cfg.MetricsWriteTimeout > time.Minute {
+		return fmt.Errorf("METRICS_WRITE_TIMEOUT_SEC must be between 1 and 60")
+	}
+	return nil
 }

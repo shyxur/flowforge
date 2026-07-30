@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/shyxur/windylane/internal/domain"
+	metricspkg "github.com/shyxur/windylane/internal/metrics"
 	"github.com/shyxur/windylane/internal/ports"
 )
 
@@ -22,6 +23,14 @@ type WorkflowExecutionService struct {
 	tasks      ports.WorkflowTaskDispatcher
 	webhooks   ports.WorkflowWebhookDispatcher
 	now        func() time.Time
+	metrics    ports.MetricRecorder
+}
+
+func (service *WorkflowExecutionService) WithMetricRecorder(
+	recorder ports.MetricRecorder,
+) *WorkflowExecutionService {
+	service.metrics = recorder
+	return service
 }
 
 const (
@@ -118,6 +127,9 @@ func (service *WorkflowExecutionService) StartExecution(
 	if execution.WorkflowID != input.WorkflowID {
 		return nil, false, domain.ErrWorkflowExecutionIdempotencyConflict
 	}
+	if !reused {
+		service.recordExecutionMetric(execution, domain.MetricWorkflowExecutionCreated, "")
+	}
 	if err := service.AdvanceExecution(ctx, execution.OrgID, execution.WorkflowID, execution.ID); err != nil {
 		return nil, reused, err
 	}
@@ -208,9 +220,20 @@ func (service *WorkflowExecutionService) CancelExecution(
 	ctx context.Context,
 	orgID, workflowID, executionID uuid.UUID,
 ) (*domain.WorkflowExecution, error) {
-	return service.executions.CancelWorkflowExecution(
+	execution, err := service.executions.CancelWorkflowExecution(
 		ctx, orgID, workflowID, executionID, service.now(),
 	)
+	if err != nil {
+		return nil, err
+	}
+	service.recordExecutionMetric(execution, domain.MetricWorkflowExecutionCancelled, "")
+	nodes, _ := service.executions.GetWorkflowNodeExecutions(ctx, orgID, executionID)
+	for _, node := range nodes {
+		if node.Status == domain.WorkflowNodeCancelled {
+			service.recordNodeMetric(node, domain.MetricNodeExecutionCancelled, "")
+		}
+	}
+	return execution, nil
 }
 
 func (service *WorkflowExecutionService) AdvanceExecution(
@@ -240,11 +263,14 @@ func (service *WorkflowExecutionService) AdvanceExecution(
 		execution.Status = domain.WorkflowExecutionRunning
 		execution.StartedAt = &now
 		execution.UpdatedAt = now
-		_, err := service.executions.UpdateWorkflowExecution(
+		updated, err := service.executions.UpdateWorkflowExecution(
 			ctx, execution, []domain.WorkflowExecutionStatus{domain.WorkflowExecutionPending},
 		)
 		if err != nil {
 			return err
+		}
+		if updated {
+			service.recordExecutionMetric(execution, domain.MetricWorkflowExecutionStarted, "")
 		}
 	}
 
@@ -383,7 +409,7 @@ func (service *WorkflowExecutionService) reconcileExternalNodes(
 		}
 		if node.Status != expected || node.Attempt != previousAttempt || node.CompletedAt != nil {
 			node.UpdatedAt = now
-			updated, err := service.executions.UpdateWorkflowNodeExecution(ctx, node, expected)
+			updated, err := service.updateNode(ctx, node, expected)
 			if err != nil {
 				return changed, err
 			}
@@ -435,14 +461,13 @@ func (service *WorkflowExecutionService) scheduleRunnableNodes(
 		if !won {
 			continue
 		}
+		service.recordNodeMetric(claimed, domain.MetricNodeExecutionStarted, "")
 		if shouldSkip {
 			now := service.now()
 			claimed.Status = domain.WorkflowNodeSkipped
 			claimed.CompletedAt = &now
 			claimed.UpdatedAt = now
-			_, err = service.executions.UpdateWorkflowNodeExecution(
-				ctx, claimed, domain.WorkflowNodeRunning,
-			)
+			_, err = service.updateNode(ctx, claimed, domain.WorkflowNodeRunning)
 			return true, err
 		}
 		if err := service.executeClaimedNode(ctx, execution, definitionNode, claimed); err != nil {
@@ -568,9 +593,7 @@ func (service *WorkflowExecutionService) executeClaimedNode(
 		)
 	}
 	node.UpdatedAt = now
-	_, err := service.executions.UpdateWorkflowNodeExecution(
-		ctx, node, domain.WorkflowNodeRunning,
-	)
+	_, err := service.updateNode(ctx, node, domain.WorkflowNodeRunning)
 	return err
 }
 
@@ -586,9 +609,7 @@ func (service *WorkflowExecutionService) failClaimedNode(
 	node.ErrorMessage = message
 	node.CompletedAt = &now
 	node.UpdatedAt = now
-	if _, err := service.executions.UpdateWorkflowNodeExecution(
-		ctx, node, domain.WorkflowNodeRunning,
-	); err != nil {
+	if _, err := service.updateNode(ctx, node, domain.WorkflowNodeRunning); err != nil {
 		return err
 	}
 	return service.failExecution(ctx, execution, code, message)
@@ -605,7 +626,7 @@ func (service *WorkflowExecutionService) failExecution(
 	execution.ErrorMessage = message
 	execution.CompletedAt = &now
 	execution.UpdatedAt = now
-	_, err := service.executions.FinalizeWorkflowExecution(
+	updated, err := service.executions.FinalizeWorkflowExecution(
 		ctx, execution,
 		[]domain.WorkflowExecutionStatus{
 			domain.WorkflowExecutionPending,
@@ -613,6 +634,19 @@ func (service *WorkflowExecutionService) failExecution(
 		},
 		true,
 	)
+	if updated {
+		service.recordExecutionMetric(execution, domain.MetricWorkflowExecutionFailed, code)
+		nodes, listErr := service.executions.GetWorkflowNodeExecutions(
+			ctx, execution.OrgID, execution.ID,
+		)
+		if listErr == nil {
+			for _, node := range nodes {
+				if node.Status == domain.WorkflowNodeCancelled {
+					service.recordNodeMetric(node, domain.MetricNodeExecutionCancelled, "")
+				}
+			}
+		}
+	}
 	return err
 }
 
@@ -644,7 +678,7 @@ func (service *WorkflowExecutionService) finalizeExecutionIfComplete(
 	execution.Output = output
 	execution.CompletedAt = &now
 	execution.UpdatedAt = now
-	_, err = service.executions.FinalizeWorkflowExecution(
+	updated, err := service.executions.FinalizeWorkflowExecution(
 		ctx, execution,
 		[]domain.WorkflowExecutionStatus{
 			domain.WorkflowExecutionPending,
@@ -652,7 +686,67 @@ func (service *WorkflowExecutionService) finalizeExecutionIfComplete(
 		},
 		false,
 	)
+	if updated {
+		service.recordExecutionMetric(execution, domain.MetricWorkflowExecutionSucceeded, "")
+	}
 	return err
+}
+
+func (service *WorkflowExecutionService) updateNode(
+	ctx context.Context,
+	node *domain.WorkflowNodeExecution,
+	expected domain.WorkflowNodeExecutionStatus,
+) (bool, error) {
+	updated, err := service.executions.UpdateWorkflowNodeExecution(ctx, node, expected)
+	if err != nil || !updated {
+		return updated, err
+	}
+	switch node.Status {
+	case domain.WorkflowNodeSucceeded:
+		service.recordNodeMetric(node, domain.MetricNodeExecutionSucceeded, "")
+	case domain.WorkflowNodeFailed:
+		service.recordNodeMetric(node, domain.MetricNodeExecutionFailed, node.ErrorCode)
+	case domain.WorkflowNodeSkipped:
+		service.recordNodeMetric(node, domain.MetricNodeExecutionSkipped, "")
+	case domain.WorkflowNodeCancelled:
+		service.recordNodeMetric(node, domain.MetricNodeExecutionCancelled, "")
+	}
+	return true, nil
+}
+
+func (service *WorkflowExecutionService) recordExecutionMetric(
+	execution *domain.WorkflowExecution,
+	eventType domain.MetricEventType,
+	errorCode string,
+) {
+	if execution == nil {
+		return
+	}
+	metricspkg.Record(service.metrics, domain.NewMetricEventInput{
+		OrganizationID: execution.OrgID, Source: domain.MetricSourceTaskCanvas,
+		EventType: eventType, ResourceType: domain.MetricResourceWorkflowExecution,
+		ResourceID: execution.ID.String(), Status: string(execution.Status),
+		OccurredAt: execution.UpdatedAt, Metadata: domain.MetricMetadata{ErrorCode: errorCode},
+		TransitionKey: string(eventType),
+	})
+}
+
+func (service *WorkflowExecutionService) recordNodeMetric(
+	node *domain.WorkflowNodeExecution,
+	eventType domain.MetricEventType,
+	errorCode string,
+) {
+	if node == nil {
+		return
+	}
+	attempt := node.Attempt
+	metricspkg.Record(service.metrics, domain.NewMetricEventInput{
+		OrganizationID: node.OrgID, Source: domain.MetricSourceTaskCanvas,
+		EventType: eventType, ResourceType: domain.MetricResourceNodeExecution,
+		ResourceID: node.ID.String(), Status: string(node.Status), OccurredAt: node.UpdatedAt,
+		Metadata:      domain.MetricMetadata{Attempt: &attempt, ErrorCode: errorCode},
+		TransitionKey: string(eventType),
+	})
 }
 
 func (service *WorkflowExecutionService) touchRunningExecution(
