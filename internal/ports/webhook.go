@@ -22,3 +22,13 @@ type WebhookDeliveryRepository interface {
 	ListDueWebhookDeliveries(ctx context.Context, now time.Time, limit int) ([]*domain.WebhookDelivery, error)
 	UpdateWebhookDelivery(ctx context.Context, delivery *domain.WebhookDelivery) error
 }
+
+type WebhookSecretCipher interface {
+	Encrypt(plaintext string) (string, error)
+	Decrypt(ciphertext string) (string, error)
+}
+
+type WebhookSigner interface {
+	Sign(secret, timestamp string, payload []byte) string
+	Verify(secret, timestamp string, payload []byte, signature string) bool
+}

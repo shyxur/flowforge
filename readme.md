@@ -89,6 +89,7 @@ GET    /v1/webhooks/endpoints
 GET    /v1/webhooks/endpoints/{id}
 PATCH  /v1/webhooks/endpoints/{id}
 DELETE /v1/webhooks/endpoints/{id}
+POST   /v1/webhooks/endpoints/{id}/rotate-secret
 GET    /healthz
 GET    /readyz
 ```
@@ -136,10 +137,12 @@ another organization.
 ### Webhook endpoints
 
 Webhook endpoint routes use the same Bearer API-key authentication and
-organization scope as QueueFlow. Endpoint secrets are stored as one-way hashes
-and are never returned by the API. Webhook URLs must use HTTPS. For local
-development only, set `ALLOW_INSECURE_LOCAL_WEBHOOKS=true` to permit HTTP URLs
-whose host is localhost or a loopback IP.
+organization scope as QueueFlow. Endpoint signing secrets are encrypted at rest
+and returned only in the create or rotate response; list and get responses never
+include them. Set a unique `WEBHOOK_SECRET_ENCRYPTION_KEY` outside local
+development. Webhook URLs must use HTTPS. For local development only, set
+`ALLOW_INSECURE_LOCAL_WEBHOOKS=true` to permit HTTP URLs whose host is localhost
+or a loopback IP.
 
 Delivery execution, signing, and webhook dashboard pages are intentionally not
 part of this milestone.

@@ -26,6 +26,7 @@ type Config struct {
 	WorkerDiscoveryEnabled     bool
 	WorkerDiscoveryInterval    time.Duration
 	AllowInsecureLocalWebhooks bool
+	WebhookSecretEncryptionKey string
 }
 
 func Load() *Config {
@@ -52,6 +53,7 @@ func Load() *Config {
 	v.SetDefault("WORKER_DISCOVERY_ENABLED", false)
 	v.SetDefault("WORKER_DISCOVERY_INTERVAL_SEC", 10)
 	v.SetDefault("ALLOW_INSECURE_LOCAL_WEBHOOKS", false)
+	v.SetDefault("WEBHOOK_SECRET_ENCRYPTION_KEY", "flowforge-local-development-only")
 
 	return &Config{
 		DBDSN:                      v.GetString("DB_DSN"),
@@ -73,5 +75,6 @@ func Load() *Config {
 		WorkerDiscoveryEnabled:     v.GetBool("WORKER_DISCOVERY_ENABLED"),
 		WorkerDiscoveryInterval:    time.Duration(v.GetInt("WORKER_DISCOVERY_INTERVAL_SEC")) * time.Second,
 		AllowInsecureLocalWebhooks: v.GetBool("ALLOW_INSECURE_LOCAL_WEBHOOKS"),
+		WebhookSecretEncryptionKey: v.GetString("WEBHOOK_SECRET_ENCRYPTION_KEY"),
 	}
 }

@@ -39,16 +39,18 @@ const (
 )
 
 type WebhookEndpoint struct {
-	ID         uuid.UUID          `json:"id"`
-	OrgID      uuid.UUID          `json:"org_id"`
-	Name       string             `json:"name"`
-	URL        string             `json:"url"`
-	SecretHash string             `json:"-"`
-	EventTypes []WebhookEventType `json:"event_types"`
-	IsActive   bool               `json:"is_active"`
-	DeletedAt  *time.Time         `json:"deleted_at,omitempty"`
-	CreatedAt  time.Time          `json:"created_at"`
-	UpdatedAt  time.Time          `json:"updated_at"`
+	ID         uuid.UUID `json:"id"`
+	OrgID      uuid.UUID `json:"org_id"`
+	Name       string    `json:"name"`
+	URL        string    `json:"url"`
+	SecretHash string    `json:"-"`
+	// SecretCiphertext is encrypted at rest and is never serialized.
+	SecretCiphertext string             `json:"-"`
+	EventTypes       []WebhookEventType `json:"event_types"`
+	IsActive         bool               `json:"is_active"`
+	DeletedAt        *time.Time         `json:"deleted_at,omitempty"`
+	CreatedAt        time.Time          `json:"created_at"`
+	UpdatedAt        time.Time          `json:"updated_at"`
 }
 
 type WebhookDelivery struct {

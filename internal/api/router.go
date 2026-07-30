@@ -30,6 +30,7 @@ func NewRouter(h *Handler, auth Authenticator, limiter ports.RateLimiter, logger
 	v1.HandleFunc("GET /v1/webhooks/endpoints/{id}", h.GetWebhookEndpoint)
 	v1.HandleFunc("PATCH /v1/webhooks/endpoints/{id}", h.UpdateWebhookEndpoint)
 	v1.HandleFunc("DELETE /v1/webhooks/endpoints/{id}", h.DeleteWebhookEndpoint)
+	v1.HandleFunc("POST /v1/webhooks/endpoints/{id}/rotate-secret", h.RotateWebhookEndpointSecret)
 
 	var protected http.Handler = v1
 	protected = RateLimitMiddleware(limiter)(protected)

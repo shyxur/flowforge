@@ -19,17 +19,18 @@ var (
 )
 
 const webhookEndpointColumns = `
-	id, org_id, name, url, secret_hash, event_types, is_active,
+	id, org_id, name, url, secret_hash, secret_ciphertext, event_types, is_active,
 	deleted_at, created_at, updated_at
 `
 
 func scanWebhookEndpoint(scanner interface{ Scan(...any) error }) (*domain.WebhookEndpoint, error) {
 	var endpoint domain.WebhookEndpoint
 	var eventTypes []string
+	var secretCiphertext sql.NullString
 	var deletedAt sql.NullTime
 	if err := scanner.Scan(
 		&endpoint.ID, &endpoint.OrgID, &endpoint.Name, &endpoint.URL,
-		&endpoint.SecretHash, &eventTypes, &endpoint.IsActive,
+		&endpoint.SecretHash, &secretCiphertext, &eventTypes, &endpoint.IsActive,
 		&deletedAt, &endpoint.CreatedAt, &endpoint.UpdatedAt,
 	); err != nil {
 		return nil, err
@@ -37,6 +38,9 @@ func scanWebhookEndpoint(scanner interface{ Scan(...any) error }) (*domain.Webho
 	endpoint.EventTypes = make([]domain.WebhookEventType, len(eventTypes))
 	for i, eventType := range eventTypes {
 		endpoint.EventTypes[i] = domain.WebhookEventType(eventType)
+	}
+	if secretCiphertext.Valid {
+		endpoint.SecretCiphertext = secretCiphertext.String
 	}
 	if deletedAt.Valid {
 		endpoint.DeletedAt = &deletedAt.Time
@@ -55,11 +59,11 @@ func webhookEventTypeStrings(eventTypes []domain.WebhookEventType) []string {
 func (s *PostgresStorage) CreateWebhookEndpoint(ctx context.Context, endpoint *domain.WebhookEndpoint) error {
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO webhook_endpoints (
-			id, org_id, name, url, secret_hash, event_types, is_active,
+			id, org_id, name, url, secret_hash, secret_ciphertext, event_types, is_active,
 			created_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 	`, endpoint.ID, endpoint.OrgID, endpoint.Name, endpoint.URL, endpoint.SecretHash,
-		webhookEventTypeStrings(endpoint.EventTypes), endpoint.IsActive,
+		endpoint.SecretCiphertext, webhookEventTypeStrings(endpoint.EventTypes), endpoint.IsActive,
 		endpoint.CreatedAt, endpoint.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("postgres: create webhook endpoint: %w", err)
@@ -109,10 +113,10 @@ func (s *PostgresStorage) GetWebhookEndpoint(ctx context.Context, orgID, id uuid
 func (s *PostgresStorage) UpdateWebhookEndpoint(ctx context.Context, endpoint *domain.WebhookEndpoint) error {
 	tag, err := s.pool.Exec(ctx, `
 		UPDATE webhook_endpoints
-		SET name=$1, url=$2, secret_hash=$3, event_types=$4,
-			is_active=$5, updated_at=$6
-		WHERE org_id=$7 AND id=$8 AND deleted_at IS NULL
-	`, endpoint.Name, endpoint.URL, endpoint.SecretHash,
+		SET name=$1, url=$2, secret_hash=$3, secret_ciphertext=$4, event_types=$5,
+			is_active=$6, updated_at=$7
+		WHERE org_id=$8 AND id=$9 AND deleted_at IS NULL
+	`, endpoint.Name, endpoint.URL, endpoint.SecretHash, endpoint.SecretCiphertext,
 		webhookEventTypeStrings(endpoint.EventTypes), endpoint.IsActive,
 		endpoint.UpdatedAt, endpoint.OrgID, endpoint.ID)
 	if err != nil {

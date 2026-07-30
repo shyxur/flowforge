@@ -189,7 +189,7 @@ func assertMigrationsAndSeed(t *testing.T, ctx context.Context, pool *pgxpool.Po
 	if err := pool.QueryRow(ctx, "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil {
 		t.Fatal(err)
 	}
-	if version != 3 || dirty {
+	if version != 4 || dirty {
 		t.Fatalf("migration version=%d dirty=%v", version, dirty)
 	}
 	var orgCount, keyCount int

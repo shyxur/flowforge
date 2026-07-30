@@ -10,6 +10,7 @@ import (
 	"github.com/shyxur/flowforge/internal/config"
 	"github.com/shyxur/flowforge/internal/storage/postgres"
 	"github.com/shyxur/flowforge/internal/usecase"
+	"github.com/shyxur/flowforge/internal/webhook"
 	"go.uber.org/zap"
 )
 
@@ -31,7 +32,8 @@ func main() {
 
 	limiter := redisbroker.NewTokenBucketLimiter(broker.Client(), 2, 5)
 	service := usecase.NewService(storage, broker)
-	webhookService := usecase.NewWebhookService(storage, cfg.AllowInsecureLocalWebhooks)
+	secretCipher := webhook.NewSecretCipher(cfg.WebhookSecretEncryptionKey)
+	webhookService := usecase.NewWebhookService(storage, secretCipher, cfg.AllowInsecureLocalWebhooks)
 	auth := usecase.NewAuthService(storage)
 	handler := api.NewHandler(service, logger, webhookService)
 	router := api.NewRouter(handler, auth, limiter, logger)

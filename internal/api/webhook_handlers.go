@@ -12,11 +12,12 @@ import (
 )
 
 type WebhookService interface {
-	CreateEndpoint(ctx context.Context, input usecase.CreateWebhookEndpointInput) (*domain.WebhookEndpoint, error)
+	CreateEndpoint(ctx context.Context, input usecase.CreateWebhookEndpointInput) (*usecase.CreateWebhookEndpointResult, error)
 	ListEndpoints(ctx context.Context, orgID uuid.UUID) ([]*domain.WebhookEndpoint, error)
 	GetEndpoint(ctx context.Context, orgID, id uuid.UUID) (*domain.WebhookEndpoint, error)
 	UpdateEndpoint(ctx context.Context, orgID, id uuid.UUID, input usecase.UpdateWebhookEndpointInput) (*domain.WebhookEndpoint, error)
 	DeleteEndpoint(ctx context.Context, orgID, id uuid.UUID) error
+	RotateSecret(ctx context.Context, orgID, id uuid.UUID) (string, error)
 }
 
 type createWebhookEndpointRequest struct {
@@ -46,6 +47,11 @@ type webhookEndpointResponse struct {
 	UpdatedAt  time.Time                 `json:"updated_at"`
 }
 
+type createWebhookEndpointResponse struct {
+	webhookEndpointResponse
+	Secret string `json:"secret"`
+}
+
 func toWebhookEndpointResponse(endpoint *domain.WebhookEndpoint) webhookEndpointResponse {
 	return webhookEndpointResponse{
 		ID: endpoint.ID, OrgID: endpoint.OrgID, Name: endpoint.Name, URL: endpoint.URL,
@@ -64,7 +70,7 @@ func (h *Handler) CreateWebhookEndpoint(w http.ResponseWriter, r *http.Request) 
 	if request.IsActive != nil {
 		isActive = *request.IsActive
 	}
-	endpoint, err := h.webhookService.CreateEndpoint(r.Context(), usecase.CreateWebhookEndpointInput{
+	result, err := h.webhookService.CreateEndpoint(r.Context(), usecase.CreateWebhookEndpointInput{
 		OrgID: MustPrincipal(r.Context()).OrgID, Name: request.Name, URL: request.URL,
 		Secret: request.Secret, EventTypes: request.EventTypes, IsActive: isActive,
 	})
@@ -72,7 +78,10 @@ func (h *Handler) CreateWebhookEndpoint(w http.ResponseWriter, r *http.Request) 
 		h.writeWebhookError(w, "create webhook endpoint", err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, toWebhookEndpointResponse(endpoint))
+	writeJSON(w, http.StatusCreated, createWebhookEndpointResponse{
+		webhookEndpointResponse: toWebhookEndpointResponse(result.Endpoint),
+		Secret:                  result.Secret,
+	})
 }
 
 func (h *Handler) ListWebhookEndpoints(w http.ResponseWriter, r *http.Request) {
@@ -135,6 +144,19 @@ func (h *Handler) DeleteWebhookEndpoint(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) RotateWebhookEndpointSecret(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseWebhookEndpointID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	secret, err := h.webhookService.RotateSecret(r.Context(), MustPrincipal(r.Context()).OrgID, id)
+	if err != nil {
+		h.writeWebhookError(w, "rotate webhook endpoint secret", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"secret": secret})
 }
 
 func parseWebhookEndpointID(w http.ResponseWriter, raw string) (uuid.UUID, bool) {

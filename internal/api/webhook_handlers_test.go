@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/shyxur/flowforge/internal/domain"
 	"github.com/shyxur/flowforge/internal/usecase"
+	webhookinfra "github.com/shyxur/flowforge/internal/webhook"
 	"go.uber.org/zap"
 )
 
@@ -75,7 +76,7 @@ func cloneWebhookEndpoint(endpoint *domain.WebhookEndpoint) *domain.WebhookEndpo
 
 func TestWebhookEndpointCRUDIsTenantScopedAndSecretSafe(t *testing.T) {
 	repository := newWebhookEndpointRepositoryStub()
-	webhookService := usecase.NewWebhookService(repository, false)
+	webhookService := usecase.NewWebhookService(repository, webhookinfra.NewSecretCipher("test-key"), false)
 	orgOne, orgTwo := uuid.New(), uuid.New()
 	orgOneRouter := testWebhookRouter(webhookService, orgOne)
 	orgTwoRouter := testWebhookRouter(webhookService, orgTwo)
@@ -91,8 +92,8 @@ func TestWebhookEndpointCRUDIsTenantScopedAndSecretSafe(t *testing.T) {
 	}
 	var created map[string]any
 	decodeWebhookResponse(t, createResponse, &created)
-	if _, exposed := created["secret"]; exposed {
-		t.Fatal("create response exposed secret")
+	if created["secret"] != "top-secret" {
+		t.Fatalf("create response did not return secret once: %#v", created)
 	}
 	if _, exposed := created["secret_hash"]; exposed {
 		t.Fatal("create response exposed secret_hash")
@@ -125,10 +126,18 @@ func TestWebhookEndpointCRUDIsTenantScopedAndSecretSafe(t *testing.T) {
 	if len(listBody.Items) != 1 || listBody.Items[0]["id"] != endpointID {
 		t.Fatalf("tenant-scoped list = %#v", listBody.Items)
 	}
+	if _, exposed := listBody.Items[0]["secret"]; exposed {
+		t.Fatal("list response exposed secret")
+	}
 
 	getResponse := performWebhookRequest(t, orgOneRouter, http.MethodGet, "/v1/webhooks/endpoints/"+endpointID, "")
 	if getResponse.Code != http.StatusOK {
 		t.Fatalf("get status = %d: %s", getResponse.Code, getResponse.Body.String())
+	}
+	var got map[string]any
+	decodeWebhookResponse(t, getResponse, &got)
+	if _, exposed := got["secret"]; exposed {
+		t.Fatal("get response exposed secret")
 	}
 
 	crossOrgResponse := performWebhookRequest(t, orgTwoRouter, http.MethodGet, "/v1/webhooks/endpoints/"+endpointID, "")
@@ -150,6 +159,29 @@ func TestWebhookEndpointCRUDIsTenantScopedAndSecretSafe(t *testing.T) {
 		t.Fatalf("updated response = %#v", updated)
 	}
 
+	rotateResponse := performWebhookRequest(t, orgOneRouter, http.MethodPost, "/v1/webhooks/endpoints/"+endpointID+"/rotate-secret", "")
+	if rotateResponse.Code != http.StatusOK {
+		t.Fatalf("rotate status = %d: %s", rotateResponse.Code, rotateResponse.Body.String())
+	}
+	var rotated map[string]string
+	decodeWebhookResponse(t, rotateResponse, &rotated)
+	newSecret := rotated["secret"]
+	if newSecret == "" || newSecret == "top-secret" {
+		t.Fatalf("rotation secret = %q", newSecret)
+	}
+	signer := webhookinfra.HMACSigner{}
+	oldSignature := signer.Sign("top-secret", "1722326400", []byte(`{"task":"one"}`))
+	if signer.Verify(newSecret, "1722326400", []byte(`{"task":"one"}`), oldSignature) {
+		t.Fatal("old signature remained valid after secret rotation")
+	}
+
+	postRotationGet := performWebhookRequest(t, orgOneRouter, http.MethodGet, "/v1/webhooks/endpoints/"+endpointID, "")
+	var postRotationBody map[string]any
+	decodeWebhookResponse(t, postRotationGet, &postRotationBody)
+	if _, exposed := postRotationBody["secret"]; exposed {
+		t.Fatal("get response exposed rotated secret")
+	}
+
 	deleteResponse := performWebhookRequest(t, orgOneRouter, http.MethodDelete, "/v1/webhooks/endpoints/"+endpointID, "")
 	if deleteResponse.Code != http.StatusNoContent {
 		t.Fatalf("delete status = %d: %s", deleteResponse.Code, deleteResponse.Body.String())
@@ -164,7 +196,7 @@ func TestWebhookEndpointCRUDIsTenantScopedAndSecretSafe(t *testing.T) {
 }
 
 func TestWebhookEndpointRejectsInvalidURLsAndEvents(t *testing.T) {
-	router := testWebhookRouter(usecase.NewWebhookService(newWebhookEndpointRepositoryStub(), false), uuid.New())
+	router := testWebhookRouter(newTestWebhookService(newWebhookEndpointRepositoryStub(), false), uuid.New())
 	tests := []struct {
 		name string
 		body string
@@ -198,15 +230,19 @@ func TestWebhookEndpointRejectsInvalidURLsAndEvents(t *testing.T) {
 
 func TestWebhookEndpointAllowsInsecureLocalURLOnlyWhenEnabled(t *testing.T) {
 	body := `{"name":"local","url":"http://127.0.0.1:9000/hook","secret":"s","event_types":["task.created"]}`
-	disabled := testWebhookRouter(usecase.NewWebhookService(newWebhookEndpointRepositoryStub(), false), uuid.New())
+	disabled := testWebhookRouter(newTestWebhookService(newWebhookEndpointRepositoryStub(), false), uuid.New())
 	if response := performWebhookRequest(t, disabled, http.MethodPost, "/v1/webhooks/endpoints", body); response.Code != http.StatusBadRequest {
 		t.Fatalf("disabled status = %d, want 400", response.Code)
 	}
 
-	enabled := testWebhookRouter(usecase.NewWebhookService(newWebhookEndpointRepositoryStub(), true), uuid.New())
+	enabled := testWebhookRouter(newTestWebhookService(newWebhookEndpointRepositoryStub(), true), uuid.New())
 	if response := performWebhookRequest(t, enabled, http.MethodPost, "/v1/webhooks/endpoints", body); response.Code != http.StatusCreated {
 		t.Fatalf("enabled status = %d, want 201: %s", response.Code, response.Body.String())
 	}
+}
+
+func newTestWebhookService(repository *webhookEndpointRepositoryStub, allowInsecure bool) *usecase.WebhookService {
+	return usecase.NewWebhookService(repository, webhookinfra.NewSecretCipher("test-key"), allowInsecure)
 }
 
 func testWebhookRouter(webhookService WebhookService, orgID uuid.UUID) http.Handler {
