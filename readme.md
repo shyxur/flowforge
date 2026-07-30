@@ -1,12 +1,27 @@
 # windylane
 
+[![CI](https://github.com/shyxur/windylane/actions/workflows/ci.yml/badge.svg)](https://github.com/shyxur/windylane/actions/workflows/ci.yml)
+
+## About
+
+windylane is a self-hosted control plane for distributed task execution,
+signed webhook delivery, workflow orchestration, and operational metrics. It
+provides a compact, inspectable option for teams that want to own their
+infrastructure and deployment.
+
+The project is self-hosted-first, tenant-scoped throughout the architecture,
+and deliberately limited to Go, PostgreSQL, Redis, Next.js, and Docker Compose.
+It is not intended to reproduce every feature of general automation platforms
+or large workflow engines.
+
+Maintained by [@shyxur](https://github.com/shyxur).
+
 stay in flow.
 
 ![windylane monochrome brand board](docs/brand/windylane-brand-board.png)
 
-windylane is a self-hosted control plane for distributed task execution and
-webhook delivery, built with Go, Postgres, Redis, Next.js, and Tailwind CSS.
-The product target is [`windylane.dev`](https://windylane.dev).
+The implementation uses Go, PostgreSQL, Redis, Next.js, and Tailwind CSS. The
+product target is [`windylane.dev`](https://windylane.dev).
 
 Current release: [`v0.5.0`](https://github.com/shyxur/windylane/releases/tag/v0.5.0)
 ([release notes](docs/releases/v0.5.0.md)).
@@ -18,6 +33,17 @@ events. TaskCanvas adds tenant-scoped visual workflow authoring, immutable
 publishing, durable execution, and node-level timeline inspection. QueueLens
 is in progress: its M1 foundation durably captures tenant-scoped lifecycle
 metrics, while analytics APIs and dashboards remain future work.
+
+## Positioning
+
+windylane combines a task queue, signed webhook delivery, visual workflows, and
+metrics foundations in an inspectable, self-hosted control plane. Tenant scope
+is enforced across API, storage, queue, and worker boundaries, and local
+deployment uses Docker Compose with a compact infrastructure set. n8n and
+Zapier primarily cover broad automation and integration use cases, while
+Temporal provides durable orchestration across a larger platform and SDK
+surface. windylane has a narrower scope and does not claim feature parity with
+those systems.
 
 ## Core features
 
@@ -52,6 +78,45 @@ Worker pool
     -> handler execution
     -> retry/backoff or DLQ
     -> Redis ACK/NACK
+```
+
+```mermaid
+flowchart LR
+    Client["HTTP client"] --> Handler["HTTP handler"]
+    Handler --> UseCase["Application / use case"]
+    UseCase --> Ports["Ports"]
+    Ports --> Postgres["PostgreSQL adapter"]
+    Ports --> Redis["Redis adapter"]
+
+    Producer["Producer / reconciler"] --> UseCase
+    Worker["Worker pool"] --> Ports
+    WebhookWorker["Webhook worker"] --> Ports
+    UseCase -. lifecycle events .-> Recorder["Metrics recorder"]
+    Worker -. lifecycle events .-> Recorder
+    WebhookWorker -. lifecycle events .-> Recorder
+    Recorder --> Postgres
+
+    QueueFlow["QueueFlow"] --> UseCase
+    EventForge["EventForge"] --> UseCase
+    TaskCanvas["TaskCanvas"] --> UseCase
+    QueueLens["QueueLens"] --> Recorder
+```
+
+```mermaid
+flowchart TD
+    Ingest["Task ingestion"] --> Validate["Validation and idempotency"]
+    Validate --> Durable["Durable PostgreSQL state"]
+    Durable --> Dispatch["Redis dispatch"]
+    Dispatch --> Claim["Worker claim"]
+    Claim --> Execute["Execution"]
+    Execute -->|success| Success["PostgreSQL completed"]
+    Success --> Ack["Redis ACK"]
+    Execute -->|failure| Attempts{"Attempts remain?"}
+    Attempts -->|yes| Backoff["Retry and backoff"]
+    Backoff --> Dispatch
+    Attempts -->|no| DLQ["PostgreSQL dead letter and Redis DLQ"]
+    Durable -->|cancel| Cancel["PostgreSQL cancelled and Redis removal"]
+    Claim -. at-least-once .-> Execute
 ```
 
 - `internal/api`: HTTP routing, middleware, request validation and responses.
@@ -426,6 +491,16 @@ sent to the browser.
 
 Only screenshots captured from a real windylane environment should be added;
 generated or mock screenshots are not product evidence.
+
+## Documentation
+
+- [EventForge webhook delivery](docs/eventforge.md)
+- [TaskCanvas workflows](docs/taskcanvas.md)
+- [QueueLens metrics foundations](docs/queuelens.md)
+- [Architecture decisions](docs/decisions/readme.md)
+- [v0.5.0 release notes](docs/releases/v0.5.0.md)
+- [Brand system](docs/brand/brand-system.md)
+- [Trademark and brand policy](trademark.md)
 
 ## Roadmap
 
