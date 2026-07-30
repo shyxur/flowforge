@@ -1,4 +1,4 @@
-# FlowForge — QueueFlow and EventForge
+# windylane — QueueFlow and EventForge
 
 QueueFlow is a multi-tenant, at-least-once distributed task queue written in Go.
 Postgres is the durable source of truth; Redis is the broker and hot-state
