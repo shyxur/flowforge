@@ -254,3 +254,11 @@ sent to the browser.
 - `/readyz` failing: verify both Postgres and Redis are reachable.
 - Pending task not visible in Redis: the worker reconciliation loop retries
   undispatched Postgres rows every `RECONCILE_INTERVAL_SEC`.
+
+## license
+
+the source code is licensed under the apache license 2.0.
+
+the flowforge name, logo, wordmark, icon, visual identity, brand system, and
+files under `docs/brand/` are not open source and are not licensed for reuse as
+a brand identity. see [`trademark.md`](./trademark.md).
