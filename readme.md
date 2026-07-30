@@ -1,8 +1,9 @@
-# QueueFlow — FlowForge Phase 1
+# FlowForge — QueueFlow and EventForge
 
 QueueFlow is a multi-tenant, at-least-once distributed task queue written in Go.
 Postgres is the durable source of truth; Redis is the broker and hot-state
-transport.
+transport. EventForge adds tenant-scoped, signed webhook delivery for QueueFlow
+task lifecycle events.
 
 ## Architecture
 
@@ -148,6 +149,9 @@ development. Webhook URLs must use HTTPS. For local development only, set
 or a loopback IP.
 
 Delivery execution and signing run through the EventForge webhook worker.
+See the [EventForge webhook guide](docs/eventforge.md) for endpoint examples,
+HMAC verification, delivery logs, retry behavior, worker configuration,
+security guidance, and troubleshooting.
 
 ## Worker lifecycle
 
