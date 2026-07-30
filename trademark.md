@@ -1,21 +1,21 @@
-# flowforge trademark and brand policy
+# windylane trademark and brand policy
 
-the flowforge name, logo, icon, wordmark, monochrome brand system, visual
+the windylane name, logo, icon, wordmark, monochrome brand system, visual
 identity, and related brand assets are owned by shyxur.
 
 the source code in this repository is licensed separately under the apache
 license 2.0. that software license applies to source code only. it does not
-grant permission to use the flowforge name, logo, icon, wordmark, visual
+grant permission to use the windylane name, logo, icon, wordmark, visual
 identity, brand system, or related brand assets in a way that suggests
 ownership, endorsement, official affiliation, or commercial branding.
 
 ## allowed use
 
-you may use the flowforge name only to:
+you may use the windylane name only to:
 
 - refer to the original project
 - link to this repository
-- accurately describe compatibility with flowforge
+- accurately describe compatibility with windylane
 - discuss, review, or report on the project
 
 these references must not imply endorsement, sponsorship, or official
@@ -25,14 +25,14 @@ affiliation.
 
 without prior written permission from shyxur, you may not:
 
-- use the flowforge logo, icon, or wordmark as your own product identity
-- use the flowforge name for a competing product or service
-- imply that a fork or derivative project is the official flowforge project
+- use the windylane logo, icon, or wordmark as your own product identity
+- use the windylane name for a competing product or service
+- imply that a fork or derivative project is the official windylane project
 - sell, license, or distribute the brand assets as your own
-- use the flowforge visual identity, brand system, logo, icon, or wordmark in
+- use the windylane visual identity, brand system, logo, icon, or wordmark in
   commercial branding
 
-commercial use of flowforge brand assets requires prior written permission from
+commercial use of windylane brand assets requires prior written permission from
 shyxur.
 
 ## forks
@@ -48,7 +48,7 @@ and visual identity unless written permission is granted by shyxur.
 all files under `docs/brand/` are provided for reference only. they are not
 open source and are not covered by the apache license 2.0.
 
-unless explicitly stated otherwise, the flowforge brand assets are:
+unless explicitly stated otherwise, the windylane brand assets are:
 
 all rights reserved.
 

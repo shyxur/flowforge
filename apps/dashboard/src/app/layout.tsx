@@ -1,14 +1,18 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { SidebarNav } from "@/components/sidebar-nav";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "flowforge dashboard",
-    template: "%s · flowforge",
+    default: "windylane dashboard",
+    template: "%s · windylane",
   },
-  description: "operations dashboard for flowforge.",
+  description: "operations dashboard for windylane.",
+  icons: {
+    icon: "/brand/windylane-mark.png",
+  },
 };
 
 export default function RootLayout({
@@ -20,8 +24,17 @@ export default function RootLayout({
         <div className="app-shell">
           <aside className="sidebar">
             <Link className="brand" href="/">
-              <strong>flowforge</strong>
-              <small>queueflow control plane</small>
+              <span className="brand-logo-frame">
+                <Image
+                  alt="windylane"
+                  className="brand-logo"
+                  height={1024}
+                  priority
+                  src="/brand/windylane-logo.png"
+                  width={1536}
+                />
+              </span>
+              <small>stay in flow.</small>
             </Link>
 
             <SidebarNav />
@@ -39,7 +52,7 @@ export default function RootLayout({
             <header className="topbar">
               <div>
                 <p>operations</p>
-                <span>flowforge control plane</span>
+                <span>windylane control plane</span>
               </div>
               <div className="topbar-actions">
                 <span className="environment-badge">development</span>

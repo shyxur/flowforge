@@ -37,7 +37,7 @@ curl -sS http://localhost:8080/v1/webhooks/endpoints \
   -H 'Content-Type: application/json' \
   -d '{
     "name": "billing events",
-    "url": "https://example.com/webhooks/flowforge",
+    "url": "https://example.com/webhooks/windylane",
     "event_types": ["task.completed", "task.failed"],
     "is_active": true
   }'
@@ -50,7 +50,7 @@ The `201 Created` response includes a generated `secret`:
   "id": "0ca3de76-6055-47eb-9485-c94d3791755e",
   "org_id": "00000000-0000-4000-8000-000000000001",
   "name": "billing events",
-  "url": "https://example.com/webhooks/flowforge",
+  "url": "https://example.com/webhooks/windylane",
   "event_types": ["task.completed", "task.failed"],
   "is_active": true,
   "secret": "generated-base64url-signing-secret"
@@ -115,6 +115,9 @@ Every delivery is an HTTP `POST` with `Content-Type: application/json` and:
 | `X-FlowForge-Delivery` | Delivery UUID |
 | `X-FlowForge-Timestamp` | Unix timestamp in seconds |
 | `X-FlowForge-Signature` | `v1=` followed by the hex HMAC-SHA256 digest |
+
+the `X-FlowForge-*` header names are retained as legacy protocol identifiers
+for backward compatibility. they do not represent the current product brand.
 
 The signed bytes are:
 
@@ -235,7 +238,7 @@ The API and every webhook worker must use the same
 
 ## Dashboard
 
-The server-rendered dashboard keeps the FlowForge API key out of browser
+The server-rendered dashboard keeps the windylane API key out of browser
 JavaScript. EventForge pages are:
 
 - `/webhooks`

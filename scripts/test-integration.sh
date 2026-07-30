@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-project="flowforge-integration"
+project="windylane-integration"
 compose_file="docker-compose.integration.yml"
 
 cleanup() {

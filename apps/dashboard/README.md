@@ -1,6 +1,6 @@
 # QueueFlow Dashboard
 
-Next.js operations dashboard for FlowForge QueueFlow.
+Next.js operations dashboard for windylane QueueFlow.
 
 ```bash
 cp .env.example .env.local

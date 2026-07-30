@@ -65,7 +65,7 @@ export default async function TasksPage({ searchParams }: Props) {
 
       {error ? (
         <section className="panel api-error">
-          <strong>could not reach flowforge</strong>
+          <strong>could not reach windylane</strong>
           <p>{error}</p>
         </section>
       ) : tasks.length === 0 ? (

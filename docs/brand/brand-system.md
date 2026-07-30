@@ -1,6 +1,6 @@
-# flowforge brand system
+# windylane brand system
 
-flowforge is a monochrome developer-tool brand for a serious saas control plane.
+windylane is a monochrome developer-tool brand for a serious saas control plane.
 
 this file is the source of truth for dashboard styling. the brand board image is only visual reference.
 
@@ -25,7 +25,7 @@ this file is the source of truth for dashboard styling. the brand board image is
 
 ## brand voice
 
-flowforge should feel:
+windylane should feel:
 
 - reliable
 - technical
@@ -49,10 +49,22 @@ avoid:
 product name:
 
 ```txt
-flowforge
+windylane
 ```
 
 always write the product name lowercase in the dashboard unless required by a technical context.
+
+slogan:
+
+```txt
+stay in flow.
+```
+
+current assets:
+
+- brand board: `docs/brand/windylane-brand-board.png`
+- dashboard logo: `apps/dashboard/public/brand/windylane-logo.png`
+- dashboard mark: `apps/dashboard/public/brand/windylane-mark.png`
 
 ---
 
@@ -73,12 +85,12 @@ css variables:
 
 ```css
 :root {
-  --ff-ink: #0d0d0d;
-  --ff-graphite: #1a1a1a;
-  --ff-surface-muted: #242424;
-  --ff-slate: #404040;
-  --ff-mist: #bfbfbf;
-  --ff-paper: #ffffff;
+  --wl-ink: #0d0d0d;
+  --wl-graphite: #1a1a1a;
+  --wl-surface-muted: #242424;
+  --wl-slate: #404040;
+  --wl-mist: #bfbfbf;
+  --wl-paper: #ffffff;
 }
 ```
 
@@ -169,7 +181,7 @@ border radius:
 borders:
 
 ```css
-border: 1px solid var(--ff-slate);
+border: 1px solid var(--wl-slate);
 ```
 
 use opacity or darker surfaces instead of new colors.
@@ -181,7 +193,7 @@ use opacity or darker surfaces instead of new colors.
 wordmark:
 
 ```txt
-flowforge
+windylane
 ```
 
 icon direction:
@@ -372,6 +384,6 @@ create an endpoint to receive task lifecycle events.
 
 ## ownership
 
-the flowforge brand system, logo direction, visual identity, and files under `docs/brand/` are not open source and are not licensed for reuse as a brand identity.
+the windylane brand system, logo direction, visual identity, and files under `docs/brand/` are not open source and are not licensed for reuse as a brand identity.
 
 see [`../../trademark.md`](../../trademark.md).

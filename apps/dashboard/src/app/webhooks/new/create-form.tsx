@@ -40,7 +40,7 @@ export function CreateWebhookForm() {
           <input
             autoComplete="url"
             name="url"
-            placeholder="https://example.com/webhooks/flowforge"
+            placeholder="https://example.com/webhooks/windylane"
             required
             type="url"
           />

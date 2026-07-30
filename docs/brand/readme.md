@@ -1,6 +1,6 @@
-# flowforge brand assets
+# windylane brand assets
 
-the files in this directory document the flowforge visual identity and are
+the files in this directory document the windylane visual identity and are
 provided for reference only.
 
 these brand assets are not open source and are not covered by the repository's

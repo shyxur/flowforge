@@ -1,4 +1,9 @@
-# windylane — QueueFlow and EventForge
+# windylane
+
+stay in flow.
+
+windylane is the control plane for QueueFlow and EventForge at
+[`windylane.dev`](https://windylane.dev).
 
 QueueFlow is a multi-tenant, at-least-once distributed task queue written in Go.
 Postgres is the durable source of truth; Redis is the broker and hot-state
@@ -259,6 +264,6 @@ sent to the browser.
 
 the source code is licensed under the apache license 2.0.
 
-the flowforge name, logo, wordmark, icon, visual identity, brand system, and
+the windylane name, logo, wordmark, icon, visual identity, brand system, and
 files under `docs/brand/` are not open source and are not licensed for reuse as
 a brand identity. see [`trademark.md`](./trademark.md).

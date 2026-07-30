@@ -84,7 +84,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   if (!response.ok) {
-    let message = `flowforge api returned ${response.status}`;
+    let message = `windylane api returned ${response.status}`;
     try {
       const body = (await response.json()) as APIErrorEnvelope;
       message = body.error?.message || message;
