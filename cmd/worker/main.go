@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -41,10 +42,6 @@ func main() {
 
 	cfg := config.Load()
 	ctx := context.Background()
-	orgID, err := uuid.Parse(cfg.OrgID)
-	if err != nil {
-		logger.Fatal("invalid ORG_ID", zap.Error(err))
-	}
 
 	storage, err := postgres.NewPostgresStorage(ctx, cfg.DBDSN)
 	if err != nil {
@@ -60,31 +57,56 @@ func main() {
 	retryPolicy := domain.DefaultRetryPolicy()
 	eng := engine.NewEngine(storage, broker, retryPolicy, cfg.TaskTimeout, logger)
 
-	handler := &exampleHandler{queue: cfg.QueueName}
-
-	workerCfg := domain.WorkerConfig{
-		WorkerID:          fmt.Sprintf("worker-%s", uuid.New().String()[:8]),
-		OrgID:             orgID,
-		Concurrency:       cfg.WorkerConcurrency,
-		RateLimitPerSec:   cfg.RateLimitPerSec,
-		HeartbeatInterval: cfg.HeartbeatInterval,
-		ShutdownTimeout:   cfg.ShutdownTimeout,
-	}
-
-	pool := worker.NewPool(workerCfg, cfg.QueueName, broker, storage, eng, handler, limiter, logger)
-
 	runCtx, stop := worker.ContextWithSignals(ctx, logger)
 	defer stop()
+	baseWorkerID := fmt.Sprintf("worker-%s", uuid.New().String()[:8])
 
-	// Background loops: crashed-worker reclaim + delayed(backoff) promotion.
-	go eng.ReclaimLoop(runCtx, orgID, cfg.QueueName, cfg.ReclaimInterval)
-	go eng.DelayedPromotionLoop(runCtx, orgID, cfg.QueueName, cfg.PromoteInterval)
-	go eng.ReconciliationLoop(runCtx, orgID, cfg.QueueName, cfg.ReconcileInterval)
-	go workerHeartbeatLoop(runCtx, storage, workerCfg.WorkerID, orgID, cfg.QueueName, cfg.HeartbeatInterval, logger)
-
-	logger.Info("worker starting", zap.String("worker_id", workerCfg.WorkerID), zap.String("queue", cfg.QueueName))
-	pool.Run(runCtx) // blocks until drained after SIGTERM
+	if cfg.WorkerDiscoveryEnabled {
+		logger.Info("worker discovery starting", zap.Duration("refresh_interval", cfg.WorkerDiscoveryInterval))
+		discovery := worker.NewScopeDiscovery(storage, cfg.WorkerDiscoveryInterval, func(scopeCtx context.Context, scope domain.QueueScope) {
+			runScope(scopeCtx, cfg, scopeWorkerID(baseWorkerID, scope), scope, broker, storage, eng, limiter, logger)
+		}, logger)
+		discovery.Run(runCtx)
+	} else {
+		orgID, err := uuid.Parse(cfg.OrgID)
+		if err != nil {
+			logger.Fatal("invalid ORG_ID", zap.Error(err))
+		}
+		runScope(runCtx, cfg, baseWorkerID, domain.QueueScope{OrgID: orgID, Queue: cfg.QueueName}, broker, storage, eng, limiter, logger)
+	}
 	logger.Info("worker exited cleanly")
+}
+
+func runScope(
+	ctx context.Context,
+	cfg *config.Config,
+	workerID string,
+	scope domain.QueueScope,
+	broker ports.Broker,
+	storage ports.Storage,
+	eng *engine.Engine,
+	limiter ports.RateLimiter,
+	logger *zap.Logger,
+) {
+	handler := &exampleHandler{queue: scope.Queue}
+	workerCfg := domain.WorkerConfig{
+		WorkerID: workerID, OrgID: scope.OrgID,
+		Concurrency: cfg.WorkerConcurrency, RateLimitPerSec: cfg.RateLimitPerSec,
+		HeartbeatInterval: cfg.HeartbeatInterval, ShutdownTimeout: cfg.ShutdownTimeout,
+	}
+	pool := worker.NewPool(workerCfg, scope.Queue, broker, storage, eng, handler, limiter, logger)
+	go eng.ReclaimLoop(ctx, scope.OrgID, scope.Queue, cfg.ReclaimInterval)
+	go eng.DelayedPromotionLoop(ctx, scope.OrgID, scope.Queue, cfg.PromoteInterval)
+	go eng.ReconciliationLoop(ctx, scope.OrgID, scope.Queue, cfg.ReconcileInterval)
+	go workerHeartbeatLoop(ctx, storage, workerID, scope.OrgID, scope.Queue, cfg.HeartbeatInterval, logger)
+	logger.Info("worker scope running",
+		zap.String("worker_id", workerID), zap.String("org_id", scope.OrgID.String()), zap.String("queue", scope.Queue))
+	pool.Run(ctx)
+}
+
+func scopeWorkerID(base string, scope domain.QueueScope) string {
+	sum := sha256.Sum256([]byte(scope.Key()))
+	return fmt.Sprintf("%s-%x", base, sum[:4])
 }
 
 func workerHeartbeatLoop(ctx context.Context, storage ports.Storage, workerID string, orgID uuid.UUID, queue string, interval time.Duration, logger *zap.Logger) {

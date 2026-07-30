@@ -44,3 +44,12 @@ type Worker struct {
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }
+
+type QueueScope struct {
+	OrgID uuid.UUID `json:"org_id"`
+	Queue string    `json:"queue"`
+}
+
+func (s QueueScope) Key() string {
+	return s.OrgID.String() + "/" + s.Queue
+}

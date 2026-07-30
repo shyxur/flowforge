@@ -69,6 +69,7 @@ type Storage interface {
 
 	ListWorkers(ctx context.Context, orgID uuid.UUID) ([]*domain.Worker, error)
 	UpsertWorkerHeartbeat(ctx context.Context, worker *domain.Worker) error
+	ListActiveQueueScopes(ctx context.Context) ([]domain.QueueScope, error)
 
 	// Ping verifies connectivity (health checks).
 	Ping(ctx context.Context) error

@@ -139,6 +139,12 @@ Workers are configured with `ORG_ID` and `QUEUE_NAME`. Postgres claim rules
 prevent active processing rows from being claimed again before visibility
 expires.
 
+Set `WORKER_DISCOVERY_ENABLED=true` to discover active organization/queue
+scopes from Postgres instead. Discovery refreshes every
+`WORKER_DISCOVERY_INTERVAL_SEC` (default `10`) and starts or drains an isolated
+pool per scope. With discovery disabled, the existing explicit
+`ORG_ID`/`QUEUE_NAME` mode remains unchanged.
+
 ## Commands
 
 ```text

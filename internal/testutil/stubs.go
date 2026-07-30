@@ -29,6 +29,7 @@ type StorageStub struct {
 	ListUndispatchedPendingFunc func(context.Context, uuid.UUID, string, int) ([]*domain.Task, error)
 	ListWorkersFunc             func(context.Context, uuid.UUID) ([]*domain.Worker, error)
 	UpsertWorkerHeartbeatFunc   func(context.Context, *domain.Worker) error
+	ListActiveQueueScopesFunc   func(context.Context) ([]domain.QueueScope, error)
 	PingFunc                    func(context.Context) error
 }
 
@@ -151,6 +152,12 @@ func (s *StorageStub) UpsertWorkerHeartbeat(ctx context.Context, worker *domain.
 		return s.UpsertWorkerHeartbeatFunc(ctx, worker)
 	}
 	return nil
+}
+func (s *StorageStub) ListActiveQueueScopes(ctx context.Context) ([]domain.QueueScope, error) {
+	if s.ListActiveQueueScopesFunc != nil {
+		return s.ListActiveQueueScopesFunc(ctx)
+	}
+	return nil, nil
 }
 func (s *StorageStub) Ping(ctx context.Context) error {
 	if s.PingFunc != nil {

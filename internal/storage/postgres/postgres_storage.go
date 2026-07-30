@@ -465,6 +465,29 @@ func (s *PostgresStorage) UpsertWorkerHeartbeat(ctx context.Context, worker *dom
 	return nil
 }
 
+func (s *PostgresStorage) ListActiveQueueScopes(ctx context.Context) ([]domain.QueueScope, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT org_id, queue
+		FROM tasks
+		WHERE deleted_at IS NULL AND status IN ('pending','processing')
+		GROUP BY org_id, queue
+		ORDER BY org_id, queue
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: list active queue scopes: %w", err)
+	}
+	defer rows.Close()
+	var scopes []domain.QueueScope
+	for rows.Next() {
+		var scope domain.QueueScope
+		if err := rows.Scan(&scope.OrgID, &scope.Queue); err != nil {
+			return nil, fmt.Errorf("postgres: list active queue scopes scan: %w", err)
+		}
+		scopes = append(scopes, scope)
+	}
+	return scopes, rows.Err()
+}
+
 func encodeCursor(createdAt time.Time, id uuid.UUID) string {
 	value := createdAt.UTC().Format(time.RFC3339Nano) + "|" + id.String()
 	return base64.RawURLEncoding.EncodeToString([]byte(value))
