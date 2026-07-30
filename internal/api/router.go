@@ -39,6 +39,10 @@ func NewRouter(h *Handler, auth Authenticator, limiter ports.RateLimiter, logger
 	v1.HandleFunc("GET /v1/workflows/{id}", h.GetWorkflow)
 	v1.HandleFunc("PATCH /v1/workflows/{id}", h.UpdateWorkflow)
 	v1.HandleFunc("DELETE /v1/workflows/{id}", h.DeleteWorkflow)
+	v1.HandleFunc("POST /v1/workflows/{id}/validate", h.ValidateWorkflow)
+	v1.HandleFunc("POST /v1/workflows/{id}/publish", h.PublishWorkflow)
+	v1.HandleFunc("GET /v1/workflows/{id}/versions", h.ListWorkflowVersions)
+	v1.HandleFunc("GET /v1/workflows/{id}/versions/{version}", h.GetWorkflowVersion)
 
 	var protected http.Handler = v1
 	protected = RateLimitMiddleware(limiter)(protected)

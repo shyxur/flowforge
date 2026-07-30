@@ -29,7 +29,7 @@ func TestWorkflowRepository(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	if _, err := pool.Exec(ctx, "TRUNCATE workflows"); err != nil {
+	if _, err := pool.Exec(ctx, "TRUNCATE workflow_versions, workflows"); err != nil {
 		t.Fatal(err)
 	}
 	storage, err := postgres.NewPostgresStorage(ctx, dsn)
@@ -44,8 +44,11 @@ func TestWorkflowRepository(t *testing.T) {
 		ID: uuid.New(), OrgID: orgID, Name: "Integration workflow", Slug: "integration-workflow",
 		Status: domain.WorkflowStatusDraft,
 		Definition: domain.WorkflowDefinition{
-			Nodes: []domain.WorkflowNode{{ID: "start", Type: domain.WorkflowNodeTrigger, Name: "Start", Config: map[string]any{}}},
-			Edges: []domain.WorkflowEdge{},
+			Nodes: []domain.WorkflowNode{
+				{ID: "start", Type: domain.WorkflowNodeTrigger, Name: "Start", Config: map[string]any{}},
+				{ID: "task", Type: domain.WorkflowNodeTask, Name: "Task", Config: map[string]any{}},
+			},
+			Edges: []domain.WorkflowEdge{{ID: "start-task", From: "start", To: "task"}},
 		},
 		CreatedAt: now, UpdatedAt: now,
 	}
@@ -85,7 +88,45 @@ func TestWorkflowRepository(t *testing.T) {
 	if err != nil || len(page.Workflows) != 1 || page.Workflows[0].Name != workflow.Name {
 		t.Fatalf("list workflows = %+v err=%v", page, err)
 	}
-	if err := storage.SoftDeleteWorkflow(ctx, orgID, workflow.ID, now.Add(2*time.Second)); err != nil {
+	first, err := storage.PublishWorkflow(ctx, workflow, now.Add(2*time.Second))
+	if err != nil || first.Version != 1 {
+		t.Fatalf("first publish = %+v err=%v", first, err)
+	}
+	published, err := storage.GetWorkflowByID(ctx, orgID, workflow.ID)
+	if err != nil || published.Status != domain.WorkflowStatusPublished {
+		t.Fatalf("published workflow = %+v err=%v", published, err)
+	}
+	published.Name = "Second snapshot"
+	published.Definition.Nodes[1].Name = "Changed task"
+	published.Status = domain.WorkflowStatusDraft
+	published.UpdatedAt = now.Add(3 * time.Second)
+	if err := storage.UpdateWorkflow(ctx, published); err != nil {
+		t.Fatalf("update published workflow draft: %v", err)
+	}
+	second, err := storage.PublishWorkflow(ctx, published, now.Add(4*time.Second))
+	if err != nil || second.Version != 2 {
+		t.Fatalf("second publish = %+v err=%v", second, err)
+	}
+	firstSnapshot, err := storage.GetWorkflowVersion(ctx, orgID, workflow.ID, 1)
+	if err != nil || firstSnapshot.Name != workflow.Name || firstSnapshot.Definition.Nodes[1].Name != "Task" {
+		t.Fatalf("immutable first snapshot = %+v err=%v", firstSnapshot, err)
+	}
+	latest, err := storage.GetLatestWorkflowVersion(ctx, orgID, workflow.ID)
+	if err != nil || latest.Version != 2 {
+		t.Fatalf("latest version = %+v err=%v", latest, err)
+	}
+	versions, err := storage.ListWorkflowVersions(ctx, orgID, workflow.ID)
+	if err != nil || len(versions.Versions) != 2 || versions.Versions[0].Version != 2 {
+		t.Fatalf("versions = %+v err=%v", versions, err)
+	}
+	if _, err := storage.GetWorkflowVersion(ctx, secondOrg, workflow.ID, 1); !errors.Is(err, domain.ErrWorkflowVersionNotFound) {
+		t.Fatalf("cross-org workflow version read error = %v", err)
+	}
+	if _, err := storage.ListWorkflowVersions(ctx, secondOrg, workflow.ID); !errors.Is(err, domain.ErrWorkflowNotFound) {
+		t.Fatalf("cross-org workflow versions list error = %v", err)
+	}
+
+	if err := storage.SoftDeleteWorkflow(ctx, orgID, workflow.ID, now.Add(5*time.Second)); err != nil {
 		t.Fatalf("soft delete workflow: %v", err)
 	}
 	if _, err := storage.GetWorkflowByID(ctx, orgID, workflow.ID); !errors.Is(err, domain.ErrWorkflowNotFound) {

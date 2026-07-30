@@ -100,7 +100,7 @@ func (s *WorkflowService) UpdateWorkflow(ctx context.Context, orgID, id uuid.UUI
 	if err != nil {
 		return nil, err
 	}
-	if workflow.Status != domain.WorkflowStatusDraft {
+	if workflow.Status == domain.WorkflowStatusArchived {
 		return nil, domain.ErrInvalidStateTransition
 	}
 	if input.Name != nil {
@@ -128,6 +128,7 @@ func (s *WorkflowService) UpdateWorkflow(ctx context.Context, orgID, id uuid.UUI
 			return nil, err
 		}
 	}
+	workflow.Status = domain.WorkflowStatusDraft
 	workflow.UpdatedAt = time.Now().UTC()
 	if err := s.repository.UpdateWorkflow(ctx, workflow); err != nil {
 		return nil, err
@@ -137,6 +138,56 @@ func (s *WorkflowService) UpdateWorkflow(ctx context.Context, orgID, id uuid.UUI
 
 func (s *WorkflowService) DeleteWorkflow(ctx context.Context, orgID, id uuid.UUID) error {
 	return s.repository.SoftDeleteWorkflow(ctx, orgID, id, time.Now().UTC())
+}
+
+func (s *WorkflowService) ValidateWorkflow(ctx context.Context, orgID, id uuid.UUID) (domain.WorkflowValidationResult, error) {
+	workflow, err := s.repository.GetWorkflowByID(ctx, orgID, id)
+	if err != nil {
+		return domain.WorkflowValidationResult{}, err
+	}
+	return ValidateWorkflowDefinition(workflow.Definition), nil
+}
+
+func (s *WorkflowService) PublishWorkflow(ctx context.Context, orgID, id uuid.UUID) (*domain.WorkflowPublishResult, error) {
+	workflow, err := s.repository.GetWorkflowByID(ctx, orgID, id)
+	if err != nil {
+		return nil, err
+	}
+	validation := ValidateWorkflowDefinition(workflow.Definition)
+	if !validation.Valid {
+		return nil, &WorkflowValidationFailure{Result: validation}
+	}
+	publishedAt := time.Now().UTC().Truncate(time.Microsecond)
+	version, err := s.repository.PublishWorkflow(ctx, workflow, publishedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &domain.WorkflowPublishResult{
+		WorkflowID:  version.WorkflowID,
+		Version:     version.Version,
+		VersionID:   version.ID,
+		Status:      version.Status,
+		PublishedAt: version.PublishedAt,
+	}, nil
+}
+
+func (s *WorkflowService) ListWorkflowVersions(ctx context.Context, orgID, workflowID uuid.UUID) (*domain.WorkflowVersionPage, error) {
+	return s.repository.ListWorkflowVersions(ctx, orgID, workflowID)
+}
+
+func (s *WorkflowService) GetWorkflowVersion(ctx context.Context, orgID, workflowID uuid.UUID, version int) (*domain.WorkflowVersion, error) {
+	if version <= 0 {
+		return nil, domain.ErrInvalidInput
+	}
+	return s.repository.GetWorkflowVersion(ctx, orgID, workflowID, version)
+}
+
+type WorkflowValidationFailure struct {
+	Result domain.WorkflowValidationResult
+}
+
+func (failure *WorkflowValidationFailure) Error() string {
+	return "workflow graph validation failed"
 }
 
 func normalizeWorkflowName(value string) (string, error) {

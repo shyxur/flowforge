@@ -85,3 +85,56 @@ type WorkflowPage struct {
 	Workflows  []*Workflow `json:"items"`
 	NextCursor string      `json:"next_cursor,omitempty"`
 }
+
+type WorkflowValidationError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Path    string `json:"path,omitempty"`
+}
+
+type WorkflowValidationResult struct {
+	Valid  bool                      `json:"valid"`
+	Errors []WorkflowValidationError `json:"errors"`
+}
+
+type WorkflowVersionStatus string
+
+const (
+	WorkflowVersionStatusPublished  WorkflowVersionStatus = "published"
+	WorkflowVersionStatusDeprecated WorkflowVersionStatus = "deprecated"
+)
+
+type WorkflowVersion struct {
+	ID          uuid.UUID             `json:"version_id"`
+	OrgID       uuid.UUID             `json:"org_id,omitempty"`
+	WorkflowID  uuid.UUID             `json:"workflow_id"`
+	Version     int                   `json:"version"`
+	Name        string                `json:"name"`
+	Slug        string                `json:"slug"`
+	Description *string               `json:"description"`
+	Definition  WorkflowDefinition    `json:"definition"`
+	Status      WorkflowVersionStatus `json:"status"`
+	PublishedAt time.Time             `json:"published_at"`
+	CreatedAt   time.Time             `json:"created_at"`
+}
+
+type WorkflowVersionSummary struct {
+	Version     int                   `json:"version"`
+	VersionID   uuid.UUID             `json:"version_id"`
+	Status      WorkflowVersionStatus `json:"status"`
+	PublishedAt time.Time             `json:"published_at"`
+	Name        string                `json:"name"`
+	Slug        string                `json:"slug"`
+}
+
+type WorkflowVersionPage struct {
+	Versions []WorkflowVersionSummary `json:"items"`
+}
+
+type WorkflowPublishResult struct {
+	WorkflowID  uuid.UUID             `json:"workflow_id"`
+	Version     int                   `json:"version"`
+	VersionID   uuid.UUID             `json:"version_id"`
+	Status      WorkflowVersionStatus `json:"status"`
+	PublishedAt time.Time             `json:"published_at"`
+}

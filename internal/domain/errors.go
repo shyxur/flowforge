@@ -21,7 +21,9 @@ var (
 	ErrWebhookEndpointNotFound = errors.New("webhook endpoint not found")
 	ErrWebhookDeliveryNotFound = errors.New("webhook delivery not found")
 	ErrWorkflowNotFound        = errors.New("workflow not found")
+	ErrWorkflowVersionNotFound = errors.New("workflow version not found")
 	ErrWorkflowSlugConflict    = errors.New("workflow slug already exists")
+	ErrWorkflowPublishConflict = errors.New("workflow changed during publish")
 )
 
 // RetryableError wraps an error to signal engine should retry.

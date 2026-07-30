@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/google/uuid"
 	"github.com/shyxur/windylane/internal/domain"
@@ -18,6 +19,10 @@ type WorkflowService interface {
 	GetWorkflow(context.Context, uuid.UUID, uuid.UUID) (*domain.Workflow, error)
 	UpdateWorkflow(context.Context, uuid.UUID, uuid.UUID, usecase.UpdateWorkflowInput) (*domain.Workflow, error)
 	DeleteWorkflow(context.Context, uuid.UUID, uuid.UUID) error
+	ValidateWorkflow(context.Context, uuid.UUID, uuid.UUID) (domain.WorkflowValidationResult, error)
+	PublishWorkflow(context.Context, uuid.UUID, uuid.UUID) (*domain.WorkflowPublishResult, error)
+	ListWorkflowVersions(context.Context, uuid.UUID, uuid.UUID) (*domain.WorkflowVersionPage, error)
+	GetWorkflowVersion(context.Context, uuid.UUID, uuid.UUID, int) (*domain.WorkflowVersion, error)
 }
 
 type createWorkflowRequest struct {
@@ -129,6 +134,71 @@ func (h *Handler) DeleteWorkflow(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *Handler) ValidateWorkflow(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseWorkflowID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	result, err := h.workflowService.ValidateWorkflow(r.Context(), MustPrincipal(r.Context()).OrgID, id)
+	if err != nil {
+		h.writeWorkflowError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) PublishWorkflow(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseWorkflowID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	result, err := h.workflowService.PublishWorkflow(r.Context(), MustPrincipal(r.Context()).OrgID, id)
+	if err != nil {
+		var validationFailure *usecase.WorkflowValidationFailure
+		if errors.As(err, &validationFailure) {
+			writeAPIError(w, http.StatusBadRequest, "workflow_validation_failed",
+				"workflow graph validation failed", map[string]any{"errors": validationFailure.Result.Errors})
+			return
+		}
+		h.writeWorkflowError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, result)
+}
+
+func (h *Handler) ListWorkflowVersions(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseWorkflowID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	page, err := h.workflowService.ListWorkflowVersions(r.Context(), MustPrincipal(r.Context()).OrgID, id)
+	if err != nil {
+		h.writeWorkflowError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, page)
+}
+
+func (h *Handler) GetWorkflowVersion(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseWorkflowID(w, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	version, err := strconv.Atoi(r.PathValue("version"))
+	if err != nil || version <= 0 {
+		writeAPIError(w, http.StatusBadRequest, "invalid_workflow_version", "workflow version must be a positive integer", nil)
+		return
+	}
+	result, err := h.workflowService.GetWorkflowVersion(
+		r.Context(), MustPrincipal(r.Context()).OrgID, id, version,
+	)
+	if err != nil {
+		h.writeWorkflowError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
 func decodeWorkflowRequest(w http.ResponseWriter, r *http.Request, destination any) bool {
 	if err := decodeJSON(w, r, destination); err != nil {
 		var maxErr *http.MaxBytesError
@@ -155,12 +225,16 @@ func (h *Handler) writeWorkflowError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, domain.ErrWorkflowNotFound):
 		writeAPIError(w, http.StatusNotFound, "workflow_not_found", "workflow not found", nil)
+	case errors.Is(err, domain.ErrWorkflowVersionNotFound):
+		writeAPIError(w, http.StatusNotFound, "workflow_version_not_found", "workflow version not found", nil)
 	case errors.Is(err, domain.ErrWorkflowSlugConflict):
 		writeAPIError(w, http.StatusConflict, "workflow_slug_conflict", "workflow slug already exists", nil)
+	case errors.Is(err, domain.ErrWorkflowPublishConflict):
+		writeAPIError(w, http.StatusConflict, "workflow_publish_conflict", "workflow changed during publish; retry the request", nil)
 	case errors.Is(err, domain.ErrInvalidInput):
 		writeAPIError(w, http.StatusBadRequest, "validation_failed", "request validation failed", nil)
 	case errors.Is(err, domain.ErrInvalidStateTransition):
-		writeAPIError(w, http.StatusConflict, "workflow_not_editable", "only draft workflows can be updated", nil)
+		writeAPIError(w, http.StatusConflict, "workflow_not_editable", "archived workflows cannot be changed or published", nil)
 	default:
 		h.internalError(w, "workflow operation", err)
 	}

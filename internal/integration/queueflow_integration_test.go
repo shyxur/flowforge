@@ -46,7 +46,7 @@ func TestQueueFlowLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	if _, err := pool.Exec(ctx, "TRUNCATE workflows, webhook_deliveries, webhook_endpoints, tasks, workers"); err != nil {
+	if _, err := pool.Exec(ctx, "TRUNCATE workflow_versions, workflows, webhook_deliveries, webhook_endpoints, tasks, workers"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -208,7 +208,7 @@ func assertMigrationsAndSeed(t *testing.T, ctx context.Context, pool *pgxpool.Po
 	if err := pool.QueryRow(ctx, "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil {
 		t.Fatal(err)
 	}
-	if version != 6 || dirty {
+	if version != 7 || dirty {
 		t.Fatalf("migration version=%d dirty=%v", version, dirty)
 	}
 	var orgCount, keyCount int

@@ -27,8 +27,9 @@ events.
   webhook deliveries.
 - Encrypted webhook signing secrets, `X-Windylane-*` signatures, delivery
   retries, and delivery logs.
-- Tenant-scoped TaskCanvas draft workflow storage and CRUD foundations with
-  validated node/edge definitions. Visual editing and execution are not yet available.
+- Tenant-scoped TaskCanvas workflow drafts, publish-safe graph validation, and
+  immutable sequential version snapshots. Visual editing and execution are not
+  yet available.
 
 ## Architecture
 
@@ -170,6 +171,10 @@ GET    /v1/workflows
 GET    /v1/workflows/{id}
 PATCH  /v1/workflows/{id}
 DELETE /v1/workflows/{id}
+POST   /v1/workflows/{id}/validate
+POST   /v1/workflows/{id}/publish
+GET    /v1/workflows/{id}/versions
+GET    /v1/workflows/{id}/versions/{version}
 GET    /healthz
 GET    /readyz
 ```
@@ -229,9 +234,9 @@ See the [EventForge webhook guide](docs/eventforge.md) for endpoint examples,
 HMAC verification, delivery logs, retry behavior, worker configuration,
 security guidance, and troubleshooting.
 
-### TaskCanvas workflow drafts
+### TaskCanvas workflows
 
-TaskCanvas M1 provides tenant-scoped storage and CRUD for draft workflow
+TaskCanvas provides tenant-scoped storage and CRUD for draft workflow
 definitions. Slugs are unique per organization and are generated from the name
 when omitted. Definitions require explicit `nodes` and `edges` arrays.
 
@@ -254,9 +259,9 @@ curl -i http://localhost:8080/v1/workflows \
   }'
 ```
 
-See [TaskCanvas workflow foundations](docs/taskcanvas.md) for validation and API
-details. Cycle detection, publishing/versioning, execution, and the visual
-canvas are intentionally outside M1.
+See [TaskCanvas workflow validation and publishing](docs/taskcanvas.md) for
+graph rules, immutable version snapshots, and API details. Execution and the
+visual canvas are not implemented yet.
 
 ## Worker lifecycle
 
@@ -381,8 +386,9 @@ generated or mock screenshots are not product evidence.
 
 - [x] Phase 1 — QueueFlow core task engine and dashboard.
 - [x] Phase 2 — EventForge webhook management and delivery lifecycle.
-- [ ] Phase 3 — TaskCanvas visual workflow orchestration (M1 draft storage and
-  CRUD foundations available; builder, publishing, and execution pending).
+- [ ] Phase 3 — TaskCanvas visual workflow orchestration (draft CRUD, graph
+  validation, publishing, and immutable version snapshots available; builder
+  and execution pending).
 - [ ] Phase 4 — QueueLens observability, metrics, and throughput analytics.
 
 ## License and brand policy

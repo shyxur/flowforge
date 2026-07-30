@@ -17,6 +17,8 @@ import (
 
 const workflowColumns = `id, org_id, name, slug, description, status, definition,
 	created_at, updated_at, deleted_at`
+const workflowVersionColumns = `id, org_id, workflow_id, version, name, slug, description,
+	definition, status, published_at, created_at`
 
 var _ ports.WorkflowRepository = (*PostgresStorage)(nil)
 
@@ -110,10 +112,10 @@ func (s *PostgresStorage) UpdateWorkflow(ctx context.Context, workflow *domain.W
 		return fmt.Errorf("postgres: marshal workflow definition: %w", err)
 	}
 	tag, err := s.pool.Exec(ctx, `
-		UPDATE workflows SET name=$1, slug=$2, description=$3, definition=$4, updated_at=$5
-		WHERE org_id=$6 AND id=$7 AND deleted_at IS NULL
-	`, workflow.Name, workflow.Slug, workflow.Description, definition, workflow.UpdatedAt,
-		workflow.OrgID, workflow.ID)
+		UPDATE workflows SET name=$1, slug=$2, description=$3, definition=$4, status=$5, updated_at=$6
+		WHERE org_id=$7 AND id=$8 AND deleted_at IS NULL
+	`, workflow.Name, workflow.Slug, workflow.Description, definition, workflow.Status,
+		workflow.UpdatedAt, workflow.OrgID, workflow.ID)
 	if isUniqueViolation(err) {
 		return domain.ErrWorkflowSlugConflict
 	}
@@ -140,6 +142,153 @@ func (s *PostgresStorage) SoftDeleteWorkflow(ctx context.Context, orgID, id uuid
 	return nil
 }
 
+func (s *PostgresStorage) PublishWorkflow(
+	ctx context.Context,
+	expected *domain.Workflow,
+	publishedAt time.Time,
+) (*domain.WorkflowVersion, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: publish workflow begin: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	row := tx.QueryRow(ctx, fmt.Sprintf(`
+		SELECT %s FROM workflows
+		WHERE org_id=$1 AND id=$2 AND deleted_at IS NULL
+		FOR UPDATE
+	`, workflowColumns), expected.OrgID, expected.ID)
+	current, err := scanWorkflowResult(row, "publish workflow select")
+	if err != nil {
+		return nil, err
+	}
+	if current.Status == domain.WorkflowStatusArchived {
+		return nil, domain.ErrInvalidStateTransition
+	}
+	if current.UpdatedAt.UnixMicro() != expected.UpdatedAt.UnixMicro() {
+		return nil, domain.ErrWorkflowPublishConflict
+	}
+
+	var nextVersion int
+	if err := tx.QueryRow(ctx, `
+		SELECT COALESCE(MAX(version), 0) + 1
+		FROM workflow_versions
+		WHERE org_id=$1 AND workflow_id=$2
+	`, current.OrgID, current.ID).Scan(&nextVersion); err != nil {
+		return nil, fmt.Errorf("postgres: publish workflow next version: %w", err)
+	}
+
+	version := &domain.WorkflowVersion{
+		ID: uuid.New(), OrgID: current.OrgID, WorkflowID: current.ID, Version: nextVersion,
+		Name: current.Name, Slug: current.Slug, Description: current.Description,
+		Definition: current.Definition, Status: domain.WorkflowVersionStatusPublished,
+		PublishedAt: publishedAt, CreatedAt: publishedAt,
+	}
+	definition, err := json.Marshal(version.Definition)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: marshal workflow version definition: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO workflow_versions
+			(id, org_id, workflow_id, version, name, slug, description, definition, status, published_at, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+	`, version.ID, version.OrgID, version.WorkflowID, version.Version, version.Name, version.Slug,
+		version.Description, definition, version.Status, version.PublishedAt, version.CreatedAt); err != nil {
+		return nil, fmt.Errorf("postgres: publish workflow insert version: %w", err)
+	}
+	tag, err := tx.Exec(ctx, `
+		UPDATE workflows SET status=$1, updated_at=$2
+		WHERE org_id=$3 AND id=$4 AND deleted_at IS NULL
+	`, domain.WorkflowStatusPublished, publishedAt, current.OrgID, current.ID)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: publish workflow update status: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, domain.ErrWorkflowNotFound
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("postgres: publish workflow commit: %w", err)
+	}
+	return version, nil
+}
+
+func (s *PostgresStorage) CreateWorkflowVersion(ctx context.Context, version *domain.WorkflowVersion) error {
+	definition, err := json.Marshal(version.Definition)
+	if err != nil {
+		return fmt.Errorf("postgres: marshal workflow version definition: %w", err)
+	}
+	_, err = s.pool.Exec(ctx, `
+		INSERT INTO workflow_versions
+			(id, org_id, workflow_id, version, name, slug, description, definition, status, published_at, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+	`, version.ID, version.OrgID, version.WorkflowID, version.Version, version.Name, version.Slug,
+		version.Description, definition, version.Status, version.PublishedAt, version.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("postgres: create workflow version: %w", err)
+	}
+	return nil
+}
+
+func (s *PostgresStorage) GetWorkflowVersion(
+	ctx context.Context,
+	orgID, workflowID uuid.UUID,
+	version int,
+) (*domain.WorkflowVersion, error) {
+	row := s.pool.QueryRow(ctx, fmt.Sprintf(`
+		SELECT %s FROM workflow_versions v
+		JOIN workflows w ON w.id=v.workflow_id AND w.org_id=v.org_id
+		WHERE v.org_id=$1 AND v.workflow_id=$2 AND v.version=$3 AND w.deleted_at IS NULL
+	`, qualifyWorkflowVersionColumns("v")), orgID, workflowID, version)
+	return scanWorkflowVersionResult(row, "get workflow version")
+}
+
+func (s *PostgresStorage) ListWorkflowVersions(
+	ctx context.Context,
+	orgID, workflowID uuid.UUID,
+) (*domain.WorkflowVersionPage, error) {
+	if _, err := s.GetWorkflowByID(ctx, orgID, workflowID); err != nil {
+		return nil, err
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT version, id, status, published_at, name, slug
+		FROM workflow_versions
+		WHERE org_id=$1 AND workflow_id=$2
+		ORDER BY version DESC
+	`, orgID, workflowID)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: list workflow versions: %w", err)
+	}
+	defer rows.Close()
+
+	page := &domain.WorkflowVersionPage{Versions: make([]domain.WorkflowVersionSummary, 0)}
+	for rows.Next() {
+		var summary domain.WorkflowVersionSummary
+		if err := rows.Scan(&summary.Version, &summary.VersionID, &summary.Status,
+			&summary.PublishedAt, &summary.Name, &summary.Slug); err != nil {
+			return nil, fmt.Errorf("postgres: list workflow versions scan: %w", err)
+		}
+		page.Versions = append(page.Versions, summary)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("postgres: list workflow versions rows: %w", err)
+	}
+	return page, nil
+}
+
+func (s *PostgresStorage) GetLatestWorkflowVersion(
+	ctx context.Context,
+	orgID, workflowID uuid.UUID,
+) (*domain.WorkflowVersion, error) {
+	row := s.pool.QueryRow(ctx, fmt.Sprintf(`
+		SELECT %s FROM workflow_versions v
+		JOIN workflows w ON w.id=v.workflow_id AND w.org_id=v.org_id
+		WHERE v.org_id=$1 AND v.workflow_id=$2 AND w.deleted_at IS NULL
+		ORDER BY v.version DESC
+		LIMIT 1
+	`, qualifyWorkflowVersionColumns("v")), orgID, workflowID)
+	return scanWorkflowVersionResult(row, "get latest workflow version")
+}
+
 func scanWorkflowResult(row workflowScanner, operation string) (*domain.Workflow, error) {
 	workflow, err := scanWorkflow(row)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -163,6 +312,39 @@ func scanWorkflow(row workflowScanner) (*domain.Workflow, error) {
 		return nil, fmt.Errorf("decode workflow definition: %w", err)
 	}
 	return workflow, nil
+}
+
+func scanWorkflowVersionResult(row workflowScanner, operation string) (*domain.WorkflowVersion, error) {
+	version, err := scanWorkflowVersion(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrWorkflowVersionNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("postgres: %s: %w", operation, err)
+	}
+	return version, nil
+}
+
+func scanWorkflowVersion(row workflowScanner) (*domain.WorkflowVersion, error) {
+	version := &domain.WorkflowVersion{}
+	var definition []byte
+	if err := row.Scan(&version.ID, &version.OrgID, &version.WorkflowID, &version.Version,
+		&version.Name, &version.Slug, &version.Description, &definition, &version.Status,
+		&version.PublishedAt, &version.CreatedAt); err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(definition, &version.Definition); err != nil {
+		return nil, fmt.Errorf("decode workflow version definition: %w", err)
+	}
+	return version, nil
+}
+
+func qualifyWorkflowVersionColumns(alias string) string {
+	columns := strings.Split(workflowVersionColumns, ",")
+	for index := range columns {
+		columns[index] = alias + "." + strings.TrimSpace(columns[index])
+	}
+	return strings.Join(columns, ", ")
 }
 
 func isUniqueViolation(err error) bool {

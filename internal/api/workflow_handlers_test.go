@@ -26,10 +26,14 @@ const validWorkflowDefinition = `{
 
 type workflowRepositoryStub struct {
 	workflows map[uuid.UUID]*domain.Workflow
+	versions  map[uuid.UUID][]*domain.WorkflowVersion
 }
 
 func newWorkflowRepositoryStub() *workflowRepositoryStub {
-	return &workflowRepositoryStub{workflows: make(map[uuid.UUID]*domain.Workflow)}
+	return &workflowRepositoryStub{
+		workflows: make(map[uuid.UUID]*domain.Workflow),
+		versions:  make(map[uuid.UUID][]*domain.WorkflowVersion),
+	}
 }
 
 func (repository *workflowRepositoryStub) CreateWorkflow(_ context.Context, workflow *domain.Workflow) error {
@@ -94,11 +98,95 @@ func (repository *workflowRepositoryStub) SoftDeleteWorkflow(_ context.Context, 
 	return nil
 }
 
+func (repository *workflowRepositoryStub) PublishWorkflow(
+	_ context.Context,
+	expected *domain.Workflow,
+	publishedAt time.Time,
+) (*domain.WorkflowVersion, error) {
+	workflow, exists := repository.workflows[expected.ID]
+	if !exists || workflow.OrgID != expected.OrgID || workflow.DeletedAt != nil {
+		return nil, domain.ErrWorkflowNotFound
+	}
+	if !workflow.UpdatedAt.Equal(expected.UpdatedAt) {
+		return nil, domain.ErrWorkflowPublishConflict
+	}
+	version := &domain.WorkflowVersion{
+		ID: uuid.New(), OrgID: workflow.OrgID, WorkflowID: workflow.ID,
+		Version: len(repository.versions[workflow.ID]) + 1,
+		Name:    workflow.Name, Slug: workflow.Slug, Description: workflow.Description,
+		Definition: workflow.Definition, Status: domain.WorkflowVersionStatusPublished,
+		PublishedAt: publishedAt, CreatedAt: publishedAt,
+	}
+	repository.versions[workflow.ID] = append(repository.versions[workflow.ID], cloneWorkflowVersion(version))
+	workflow.Status = domain.WorkflowStatusPublished
+	workflow.UpdatedAt = publishedAt
+	return cloneWorkflowVersion(version), nil
+}
+
+func (repository *workflowRepositoryStub) CreateWorkflowVersion(_ context.Context, version *domain.WorkflowVersion) error {
+	repository.versions[version.WorkflowID] = append(repository.versions[version.WorkflowID], cloneWorkflowVersion(version))
+	return nil
+}
+
+func (repository *workflowRepositoryStub) GetWorkflowVersion(
+	_ context.Context,
+	orgID, workflowID uuid.UUID,
+	version int,
+) (*domain.WorkflowVersion, error) {
+	workflow, exists := repository.workflows[workflowID]
+	if !exists || workflow.OrgID != orgID || workflow.DeletedAt != nil {
+		return nil, domain.ErrWorkflowVersionNotFound
+	}
+	for _, candidate := range repository.versions[workflowID] {
+		if candidate.Version == version {
+			return cloneWorkflowVersion(candidate), nil
+		}
+	}
+	return nil, domain.ErrWorkflowVersionNotFound
+}
+
+func (repository *workflowRepositoryStub) ListWorkflowVersions(
+	_ context.Context,
+	orgID, workflowID uuid.UUID,
+) (*domain.WorkflowVersionPage, error) {
+	workflow, exists := repository.workflows[workflowID]
+	if !exists || workflow.OrgID != orgID || workflow.DeletedAt != nil {
+		return nil, domain.ErrWorkflowNotFound
+	}
+	items := make([]domain.WorkflowVersionSummary, 0, len(repository.versions[workflowID]))
+	for index := len(repository.versions[workflowID]) - 1; index >= 0; index-- {
+		version := repository.versions[workflowID][index]
+		items = append(items, domain.WorkflowVersionSummary{
+			Version: version.Version, VersionID: version.ID, Status: version.Status,
+			PublishedAt: version.PublishedAt, Name: version.Name, Slug: version.Slug,
+		})
+	}
+	return &domain.WorkflowVersionPage{Versions: items}, nil
+}
+
+func (repository *workflowRepositoryStub) GetLatestWorkflowVersion(
+	ctx context.Context,
+	orgID, workflowID uuid.UUID,
+) (*domain.WorkflowVersion, error) {
+	versions := repository.versions[workflowID]
+	if len(versions) == 0 {
+		return nil, domain.ErrWorkflowVersionNotFound
+	}
+	return repository.GetWorkflowVersion(ctx, orgID, workflowID, versions[len(versions)-1].Version)
+}
+
 func cloneWorkflow(workflow *domain.Workflow) *domain.Workflow {
 	encoded, _ := json.Marshal(workflow)
 	var cloned domain.Workflow
 	_ = json.Unmarshal(encoded, &cloned)
 	cloned.DeletedAt = workflow.DeletedAt
+	return &cloned
+}
+
+func cloneWorkflowVersion(version *domain.WorkflowVersion) *domain.WorkflowVersion {
+	encoded, _ := json.Marshal(version)
+	var cloned domain.WorkflowVersion
+	_ = json.Unmarshal(encoded, &cloned)
 	return &cloned
 }
 
@@ -212,6 +300,119 @@ func TestWorkflowCreateValidation(t *testing.T) {
 				t.Fatalf("status/body = %d %s", response.Code, response.Body.String())
 			}
 		})
+	}
+}
+
+func TestWorkflowValidationAndPublishingLifecycle(t *testing.T) {
+	repository := newWorkflowRepositoryStub()
+	orgOne, orgTwo := uuid.New(), uuid.New()
+	orgOneRouter := testWorkflowRouter(repository, orgOne)
+	orgTwoRouter := testWorkflowRouter(repository, orgTwo)
+
+	createdResponse := performWorkflowRequest(orgOneRouter, http.MethodPost, "/v1/workflows", `{
+		"name":"Publish me","definition":`+validWorkflowDefinition+`
+	}`)
+	var created domain.Workflow
+	decodeWorkflowResponse(t, createdResponse, &created)
+	path := "/v1/workflows/" + created.ID.String()
+
+	validateResponse := performWorkflowRequest(orgOneRouter, http.MethodPost, path+"/validate", "")
+	var validation domain.WorkflowValidationResult
+	decodeWorkflowResponse(t, validateResponse, &validation)
+	if validateResponse.Code != http.StatusOK || !validation.Valid || len(validation.Errors) != 0 {
+		t.Fatalf("validation = %d %+v", validateResponse.Code, validation)
+	}
+
+	firstPublish := performWorkflowRequest(orgOneRouter, http.MethodPost, path+"/publish", "")
+	var first domain.WorkflowPublishResult
+	decodeWorkflowResponse(t, firstPublish, &first)
+	if firstPublish.Code != http.StatusCreated || first.Version != 1 || first.Status != domain.WorkflowVersionStatusPublished {
+		t.Fatalf("first publish = %d %+v", firstPublish.Code, first)
+	}
+
+	update := performWorkflowRequest(orgOneRouter, http.MethodPatch, path, `{
+		"name":"Publish me again",
+		"definition":{
+			"nodes":[
+				{"id":"start","type":"trigger","name":"Start","config":{}},
+				{"id":"work","type":"webhook","name":"Changed","config":{"url":"https://example.com"}}
+			],
+			"edges":[{"id":"start-work","from":"start","to":"work","condition":null}]
+		}
+	}`)
+	var updated domain.Workflow
+	decodeWorkflowResponse(t, update, &updated)
+	if update.Code != http.StatusOK || updated.Status != domain.WorkflowStatusDraft {
+		t.Fatalf("published workflow update = %d %+v", update.Code, updated)
+	}
+
+	secondPublish := performWorkflowRequest(orgOneRouter, http.MethodPost, path+"/publish", "")
+	var second domain.WorkflowPublishResult
+	decodeWorkflowResponse(t, secondPublish, &second)
+	if secondPublish.Code != http.StatusCreated || second.Version != 2 {
+		t.Fatalf("second publish = %d %+v", secondPublish.Code, second)
+	}
+
+	firstDetail := performWorkflowRequest(orgOneRouter, http.MethodGet, path+"/versions/1", "")
+	var firstVersion domain.WorkflowVersion
+	decodeWorkflowResponse(t, firstDetail, &firstVersion)
+	if firstVersion.Name != "Publish me" || firstVersion.Definition.Nodes[1].Type != domain.WorkflowNodeTask {
+		t.Fatalf("version one snapshot mutated: %+v", firstVersion)
+	}
+	list := performWorkflowRequest(orgOneRouter, http.MethodGet, path+"/versions", "")
+	var page domain.WorkflowVersionPage
+	decodeWorkflowResponse(t, list, &page)
+	if list.Code != http.StatusOK || len(page.Versions) != 2 || page.Versions[0].Version != 2 {
+		t.Fatalf("versions list = %d %+v", list.Code, page)
+	}
+
+	for _, route := range []string{path + "/publish", path + "/versions", path + "/versions/1"} {
+		method := http.MethodGet
+		if route == path+"/publish" {
+			method = http.MethodPost
+		}
+		response := performWorkflowRequest(orgTwoRouter, method, route, "")
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("cross-org %s = %d: %s", route, response.Code, response.Body.String())
+		}
+	}
+}
+
+func TestWorkflowCannotPublishInvalidGraph(t *testing.T) {
+	repository := newWorkflowRepositoryStub()
+	orgID := uuid.New()
+	now := time.Now().UTC()
+	workflow := &domain.Workflow{
+		ID: uuid.New(), OrgID: orgID, Name: "Invalid", Slug: "invalid",
+		Status: domain.WorkflowStatusDraft,
+		Definition: domain.WorkflowDefinition{
+			Nodes: []domain.WorkflowNode{
+				{ID: "task", Type: domain.WorkflowNodeTask, Name: "Task", Config: map[string]any{}},
+			},
+			Edges: []domain.WorkflowEdge{},
+		},
+		CreatedAt: now, UpdatedAt: now,
+	}
+	repository.workflows[workflow.ID] = workflow
+	router := testWorkflowRouter(repository, orgID)
+	path := "/v1/workflows/" + workflow.ID.String()
+
+	validateResponse := performWorkflowRequest(router, http.MethodPost, path+"/validate", "")
+	var validation domain.WorkflowValidationResult
+	decodeWorkflowResponse(t, validateResponse, &validation)
+	if validateResponse.Code != http.StatusOK || validation.Valid || len(validation.Errors) == 0 {
+		t.Fatalf("invalid validation response = %d %+v", validateResponse.Code, validation)
+	}
+	publishResponse := performWorkflowRequest(router, http.MethodPost, path+"/publish", "")
+	if publishResponse.Code != http.StatusBadRequest ||
+		!bytes.Contains(publishResponse.Body.Bytes(), []byte(`"code":"workflow_validation_failed"`)) {
+		t.Fatalf("invalid publish = %d %s", publishResponse.Code, publishResponse.Body.String())
+	}
+
+	deletedAt := now.Add(time.Second)
+	workflow.DeletedAt = &deletedAt
+	if response := performWorkflowRequest(router, http.MethodPost, path+"/publish", ""); response.Code != http.StatusNotFound {
+		t.Fatalf("deleted publish = %d %s", response.Code, response.Body.String())
 	}
 }
 
