@@ -86,5 +86,17 @@ services:
     deploy:
       replicas: 2
 
+  webhook-worker:
+    build:
+      context: .
+      dockerfile: docker/webhook-worker.Dockerfile
+    depends_on:
+      postgres: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    environment:
+      - DB_DSN=postgres://taskqueue:taskqueue@postgres:5432/taskqueue?sslmode=disable
+      - WEBHOOK_DELIVERY_TIMEOUT_SEC=10
+      - WEBHOOK_DELIVERY_POLL_INTERVAL_SEC=1
+
 volumes:
   pgdata:

@@ -19,17 +19,22 @@ type Engine struct {
 	broker      ports.Broker
 	retryPolicy domain.RetryPolicy
 	taskTimeout time.Duration // per-task execution deadline
+	events      ports.TaskEventPublisher
 	logger      *zap.Logger
 }
 
-func NewEngine(storage ports.Storage, broker ports.Broker, retryPolicy domain.RetryPolicy, taskTimeout time.Duration, logger *zap.Logger) *Engine {
-	return &Engine{
+func NewEngine(storage ports.Storage, broker ports.Broker, retryPolicy domain.RetryPolicy, taskTimeout time.Duration, logger *zap.Logger, eventPublishers ...ports.TaskEventPublisher) *Engine {
+	engine := &Engine{
 		storage:     storage,
 		broker:      broker,
 		retryPolicy: retryPolicy,
 		taskTimeout: taskTimeout,
 		logger:      logger,
 	}
+	if len(eventPublishers) > 0 {
+		engine.events = eventPublishers[0]
+	}
+	return engine
 }
 
 // Result summarizes execution outcome for metrics/logging by the caller.
@@ -58,6 +63,10 @@ func (e *Engine) Execute(ctx context.Context, task *domain.Task, workerID string
 			e.logger.Error("engine: complete failed", zap.String("task_id", task.ID.String()), zap.Error(ackErr))
 			return Result{TaskID: task.ID, Outcome: "completed", Err: ackErr}
 		}
+		task.Status = domain.StatusCompleted
+		task.UpdatedAt = now
+		task.CompletedAt = &now
+		e.publishTaskEvent(ctx, domain.WebhookEventTaskCompleted, task)
 		if ackErr := e.broker.Ack(ctx, task.OrgID, task.Queue, task.ID); ackErr != nil {
 			e.logger.Warn("engine: broker ack failed (storage already completed)", zap.Error(ackErr))
 		}
@@ -101,6 +110,9 @@ func (e *Engine) handleFailure(ctx context.Context, task *domain.Task, execErr e
 			e.logger.Error("engine: move to dlq failed", zap.String("task_id", task.ID.String()), zap.Error(err))
 			return Result{TaskID: task.ID, Outcome: "dead_letter", Err: err}
 		}
+		task.Status = domain.StatusDeadLetter
+		task.UpdatedAt = now
+		e.publishTaskEvent(ctx, domain.WebhookEventTaskDeadLetter, task)
 		if err := e.broker.MoveToDeadLetter(ctx, task.OrgID, task.Queue, task.ID); err != nil {
 			e.logger.Warn("engine: broker move to dlq failed", zap.Error(err))
 		}
@@ -116,6 +128,10 @@ func (e *Engine) handleFailure(ctx context.Context, task *domain.Task, execErr e
 		e.logger.Error("engine: fail update failed", zap.String("task_id", task.ID.String()), zap.Error(err))
 		return Result{TaskID: task.ID, Outcome: "retried", Err: err}
 	}
+	task.Status = domain.StatusPending
+	task.VisibleAt = visibleAt
+	task.UpdatedAt = now
+	e.publishTaskEvent(ctx, domain.WebhookEventTaskFailed, task)
 	if err := e.broker.Nack(ctx, task.OrgID, task.Queue, task.ID, backoff); err != nil {
 		e.logger.Warn("engine: broker nack failed", zap.Error(err))
 	} else if err := e.storage.MarkDispatched(ctx, task.OrgID, task.ID, now); err != nil {
@@ -125,6 +141,22 @@ func (e *Engine) handleFailure(ctx context.Context, task *domain.Task, execErr e
 	e.logger.Info("engine: task retry scheduled",
 		zap.String("task_id", task.ID.String()), zap.Int("attempt", task.Attempts), zap.Duration("backoff", backoff))
 	return Result{TaskID: task.ID, Outcome: "retried", Err: execErr}
+}
+
+func (e *Engine) PublishProcessingEvent(ctx context.Context, task *domain.Task) {
+	e.publishTaskEvent(ctx, domain.WebhookEventTaskProcessing, task)
+}
+
+func (e *Engine) publishTaskEvent(ctx context.Context, eventType domain.WebhookEventType, task *domain.Task) {
+	if e.events == nil {
+		return
+	}
+	if err := e.events.PublishTaskEvent(ctx, eventType, task); err != nil {
+		e.logger.Warn("engine: publish task webhook event failed",
+			zap.String("task_id", task.ID.String()),
+			zap.String("event_type", string(eventType)),
+			zap.Error(err))
+	}
 }
 
 func (e *Engine) nextBackoff(task *domain.Task) time.Duration {

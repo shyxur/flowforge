@@ -156,20 +156,20 @@ func testWebhookRepositories(t *testing.T, ctx context.Context, storage *postgre
 		t.Fatalf("update webhook endpoint: %v", err)
 	}
 
-	delivery := &domain.WebhookDelivery{
-		ID: uuid.New(), OrgID: orgID, EndpointID: endpoint.ID,
-		EventType: domain.WebhookEventTaskCreated,
-		Payload:   json.RawMessage(`{"task_id":"integration"}`),
-		Status:    domain.WebhookDeliveryPending, MaxAttempts: 5,
-		CreatedAt: now, UpdatedAt: now,
+	webhookTask := &domain.Task{
+		ID: uuid.New(), OrgID: orgID, Queue: "webhook-integration",
+		Status: domain.StatusPending, CreatedAt: now, UpdatedAt: now,
 	}
-	if err := storage.CreateWebhookDelivery(ctx, delivery); err != nil {
-		t.Fatalf("create webhook delivery: %v", err)
+	eventService := usecase.NewWebhookEventService(storage, storage, 5)
+	if err := eventService.PublishTaskEvent(ctx, domain.WebhookEventTaskCreated, webhookTask); err != nil {
+		t.Fatalf("publish webhook task event: %v", err)
 	}
-	due, err := storage.ListDueWebhookDeliveries(ctx, now, 10)
-	if err != nil || len(due) != 1 || due[0].ID != delivery.ID {
-		t.Fatalf("list due webhook deliveries = %+v err=%v", due, err)
+	due, err := storage.ClaimDueWebhookDeliveries(ctx, now, 10)
+	if err != nil || len(due) != 1 ||
+		due[0].Status != domain.WebhookDeliveryDelivering || due[0].AttemptCount != 1 {
+		t.Fatalf("claim due webhook deliveries = %+v err=%v", due, err)
 	}
+	delivery := due[0]
 	if _, err := storage.GetWebhookDelivery(ctx, uuid.New(), delivery.ID); !errors.Is(err, domain.ErrWebhookDeliveryNotFound) {
 		t.Fatalf("cross-org webhook delivery read error = %v", err)
 	}
@@ -189,7 +189,7 @@ func assertMigrationsAndSeed(t *testing.T, ctx context.Context, pool *pgxpool.Po
 	if err := pool.QueryRow(ctx, "SELECT version, dirty FROM schema_migrations").Scan(&version, &dirty); err != nil {
 		t.Fatal(err)
 	}
-	if version != 4 || dirty {
+	if version != 5 || dirty {
 		t.Fatalf("migration version=%d dirty=%v", version, dirty)
 	}
 	var orgCount, keyCount int

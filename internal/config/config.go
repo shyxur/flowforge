@@ -7,26 +7,32 @@ import (
 )
 
 type Config struct {
-	DBDSN                      string
-	RedisAddr                  string
-	RedisPassword              string
-	RedisDB                    int
-	HTTPPort                   string
-	WorkerConcurrency          int
-	RateLimitPerSec            int
-	HeartbeatInterval          time.Duration
-	ShutdownTimeout            time.Duration
-	VisibilityTimeout          time.Duration
-	TaskTimeout                time.Duration
-	ReclaimInterval            time.Duration
-	PromoteInterval            time.Duration
-	QueueName                  string
-	OrgID                      string
-	ReconcileInterval          time.Duration
-	WorkerDiscoveryEnabled     bool
-	WorkerDiscoveryInterval    time.Duration
-	AllowInsecureLocalWebhooks bool
-	WebhookSecretEncryptionKey string
+	DBDSN                         string
+	RedisAddr                     string
+	RedisPassword                 string
+	RedisDB                       int
+	HTTPPort                      string
+	WorkerConcurrency             int
+	RateLimitPerSec               int
+	HeartbeatInterval             time.Duration
+	ShutdownTimeout               time.Duration
+	VisibilityTimeout             time.Duration
+	TaskTimeout                   time.Duration
+	ReclaimInterval               time.Duration
+	PromoteInterval               time.Duration
+	QueueName                     string
+	OrgID                         string
+	ReconcileInterval             time.Duration
+	WorkerDiscoveryEnabled        bool
+	WorkerDiscoveryInterval       time.Duration
+	AllowInsecureLocalWebhooks    bool
+	WebhookSecretEncryptionKey    string
+	WebhookDeliveryTimeout        time.Duration
+	WebhookDeliveryPollInterval   time.Duration
+	WebhookDeliveryBatchSize      int
+	WebhookDeliveryMaxAttempts    int
+	WebhookDeliveryInitialBackoff time.Duration
+	WebhookDeliveryMaxBackoff     time.Duration
 }
 
 func Load() *Config {
@@ -54,27 +60,39 @@ func Load() *Config {
 	v.SetDefault("WORKER_DISCOVERY_INTERVAL_SEC", 10)
 	v.SetDefault("ALLOW_INSECURE_LOCAL_WEBHOOKS", false)
 	v.SetDefault("WEBHOOK_SECRET_ENCRYPTION_KEY", "flowforge-local-development-only")
+	v.SetDefault("WEBHOOK_DELIVERY_TIMEOUT_SEC", 10)
+	v.SetDefault("WEBHOOK_DELIVERY_POLL_INTERVAL_SEC", 1)
+	v.SetDefault("WEBHOOK_DELIVERY_BATCH_SIZE", 50)
+	v.SetDefault("WEBHOOK_DELIVERY_MAX_ATTEMPTS", 5)
+	v.SetDefault("WEBHOOK_DELIVERY_INITIAL_BACKOFF_SEC", 5)
+	v.SetDefault("WEBHOOK_DELIVERY_MAX_BACKOFF_SEC", 3600)
 
 	return &Config{
-		DBDSN:                      v.GetString("DB_DSN"),
-		RedisAddr:                  v.GetString("REDIS_ADDR"),
-		RedisPassword:              v.GetString("REDIS_PASSWORD"),
-		RedisDB:                    v.GetInt("REDIS_DB"),
-		HTTPPort:                   v.GetString("HTTP_PORT"),
-		WorkerConcurrency:          v.GetInt("WORKER_CONCURRENCY"),
-		RateLimitPerSec:            v.GetInt("RATE_LIMIT_PER_SEC"),
-		HeartbeatInterval:          time.Duration(v.GetInt("HEARTBEAT_INTERVAL_SEC")) * time.Second,
-		ShutdownTimeout:            time.Duration(v.GetInt("SHUTDOWN_TIMEOUT_SEC")) * time.Second,
-		VisibilityTimeout:          time.Duration(v.GetInt("VISIBILITY_TIMEOUT_SEC")) * time.Second,
-		TaskTimeout:                time.Duration(v.GetInt("TASK_TIMEOUT_SEC")) * time.Second,
-		ReclaimInterval:            time.Duration(v.GetInt("RECLAIM_INTERVAL_SEC")) * time.Second,
-		PromoteInterval:            time.Duration(v.GetInt("PROMOTE_INTERVAL_SEC")) * time.Second,
-		QueueName:                  v.GetString("QUEUE_NAME"),
-		OrgID:                      v.GetString("ORG_ID"),
-		ReconcileInterval:          time.Duration(v.GetInt("RECONCILE_INTERVAL_SEC")) * time.Second,
-		WorkerDiscoveryEnabled:     v.GetBool("WORKER_DISCOVERY_ENABLED"),
-		WorkerDiscoveryInterval:    time.Duration(v.GetInt("WORKER_DISCOVERY_INTERVAL_SEC")) * time.Second,
-		AllowInsecureLocalWebhooks: v.GetBool("ALLOW_INSECURE_LOCAL_WEBHOOKS"),
-		WebhookSecretEncryptionKey: v.GetString("WEBHOOK_SECRET_ENCRYPTION_KEY"),
+		DBDSN:                         v.GetString("DB_DSN"),
+		RedisAddr:                     v.GetString("REDIS_ADDR"),
+		RedisPassword:                 v.GetString("REDIS_PASSWORD"),
+		RedisDB:                       v.GetInt("REDIS_DB"),
+		HTTPPort:                      v.GetString("HTTP_PORT"),
+		WorkerConcurrency:             v.GetInt("WORKER_CONCURRENCY"),
+		RateLimitPerSec:               v.GetInt("RATE_LIMIT_PER_SEC"),
+		HeartbeatInterval:             time.Duration(v.GetInt("HEARTBEAT_INTERVAL_SEC")) * time.Second,
+		ShutdownTimeout:               time.Duration(v.GetInt("SHUTDOWN_TIMEOUT_SEC")) * time.Second,
+		VisibilityTimeout:             time.Duration(v.GetInt("VISIBILITY_TIMEOUT_SEC")) * time.Second,
+		TaskTimeout:                   time.Duration(v.GetInt("TASK_TIMEOUT_SEC")) * time.Second,
+		ReclaimInterval:               time.Duration(v.GetInt("RECLAIM_INTERVAL_SEC")) * time.Second,
+		PromoteInterval:               time.Duration(v.GetInt("PROMOTE_INTERVAL_SEC")) * time.Second,
+		QueueName:                     v.GetString("QUEUE_NAME"),
+		OrgID:                         v.GetString("ORG_ID"),
+		ReconcileInterval:             time.Duration(v.GetInt("RECONCILE_INTERVAL_SEC")) * time.Second,
+		WorkerDiscoveryEnabled:        v.GetBool("WORKER_DISCOVERY_ENABLED"),
+		WorkerDiscoveryInterval:       time.Duration(v.GetInt("WORKER_DISCOVERY_INTERVAL_SEC")) * time.Second,
+		AllowInsecureLocalWebhooks:    v.GetBool("ALLOW_INSECURE_LOCAL_WEBHOOKS"),
+		WebhookSecretEncryptionKey:    v.GetString("WEBHOOK_SECRET_ENCRYPTION_KEY"),
+		WebhookDeliveryTimeout:        time.Duration(v.GetInt("WEBHOOK_DELIVERY_TIMEOUT_SEC")) * time.Second,
+		WebhookDeliveryPollInterval:   time.Duration(v.GetInt("WEBHOOK_DELIVERY_POLL_INTERVAL_SEC")) * time.Second,
+		WebhookDeliveryBatchSize:      v.GetInt("WEBHOOK_DELIVERY_BATCH_SIZE"),
+		WebhookDeliveryMaxAttempts:    v.GetInt("WEBHOOK_DELIVERY_MAX_ATTEMPTS"),
+		WebhookDeliveryInitialBackoff: time.Duration(v.GetInt("WEBHOOK_DELIVERY_INITIAL_BACKOFF_SEC")) * time.Second,
+		WebhookDeliveryMaxBackoff:     time.Duration(v.GetInt("WEBHOOK_DELIVERY_MAX_BACKOFF_SEC")) * time.Second,
 	}
 }

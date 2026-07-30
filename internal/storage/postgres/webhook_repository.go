@@ -143,6 +143,36 @@ func (s *PostgresStorage) SoftDeleteWebhookEndpoint(ctx context.Context, orgID, 
 	return nil
 }
 
+func (s *PostgresStorage) ListActiveWebhookEndpointsForEvent(
+	ctx context.Context,
+	orgID uuid.UUID,
+	eventType domain.WebhookEventType,
+) ([]*domain.WebhookEndpoint, error) {
+	rows, err := s.pool.Query(ctx, fmt.Sprintf(`
+		SELECT %s FROM webhook_endpoints
+		WHERE org_id=$1 AND is_active=true AND deleted_at IS NULL
+		  AND $2 = ANY(event_types)
+		ORDER BY created_at ASC, id ASC
+	`, webhookEndpointColumns), orgID, eventType)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: list active webhook endpoints for event: %w", err)
+	}
+	defer rows.Close()
+
+	endpoints := make([]*domain.WebhookEndpoint, 0)
+	for rows.Next() {
+		endpoint, scanErr := scanWebhookEndpoint(rows)
+		if scanErr != nil {
+			return nil, fmt.Errorf("postgres: list active webhook endpoints for event scan: %w", scanErr)
+		}
+		endpoints = append(endpoints, endpoint)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("postgres: list active webhook endpoints for event rows: %w", err)
+	}
+	return endpoints, nil
+}
+
 const webhookDeliveryColumns = `
 	id, org_id, endpoint_id, event_type, payload, status,
 	attempt_count, max_attempts, next_attempt_at, last_attempt_at,
@@ -217,7 +247,7 @@ func (s *PostgresStorage) ListDueWebhookDeliveries(ctx context.Context, now time
 	}
 	rows, err := s.pool.Query(ctx, fmt.Sprintf(`
 		SELECT %s FROM webhook_deliveries
-		WHERE status IN ('pending','failed')
+		WHERE status IN ('pending','retrying')
 		  AND attempt_count < max_attempts
 		  AND (next_attempt_at IS NULL OR next_attempt_at <= $1)
 		ORDER BY next_attempt_at ASC NULLS FIRST, created_at ASC
@@ -240,6 +270,61 @@ func (s *PostgresStorage) ListDueWebhookDeliveries(ctx context.Context, now time
 		return nil, fmt.Errorf("postgres: list due webhook deliveries rows: %w", err)
 	}
 	return deliveries, nil
+}
+
+func (s *PostgresStorage) ClaimDueWebhookDeliveries(ctx context.Context, now time.Time, limit int) ([]*domain.WebhookDelivery, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 100
+	}
+	rows, err := s.pool.Query(ctx, fmt.Sprintf(`
+		WITH candidates AS (
+			SELECT id
+			FROM webhook_deliveries
+			WHERE status IN ('pending','retrying')
+			  AND attempt_count < max_attempts
+			  AND (next_attempt_at IS NULL OR next_attempt_at <= $1)
+			ORDER BY next_attempt_at ASC NULLS FIRST, created_at ASC
+			FOR UPDATE SKIP LOCKED
+			LIMIT $2
+		)
+		UPDATE webhook_deliveries AS delivery
+		SET status='delivering',
+			attempt_count=delivery.attempt_count+1,
+			last_attempt_at=$1,
+			next_attempt_at=NULL,
+			updated_at=$1
+		FROM candidates
+		WHERE delivery.id=candidates.id
+		RETURNING %s
+	`, prefixedWebhookDeliveryColumns("delivery")), now, limit)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: claim due webhook deliveries: %w", err)
+	}
+	defer rows.Close()
+
+	deliveries := make([]*domain.WebhookDelivery, 0)
+	for rows.Next() {
+		delivery, scanErr := scanWebhookDelivery(rows)
+		if scanErr != nil {
+			return nil, fmt.Errorf("postgres: claim due webhook deliveries scan: %w", scanErr)
+		}
+		deliveries = append(deliveries, delivery)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("postgres: claim due webhook deliveries rows: %w", err)
+	}
+	return deliveries, nil
+}
+
+func prefixedWebhookDeliveryColumns(prefix string) string {
+	return `
+		` + prefix + `.id, ` + prefix + `.org_id, ` + prefix + `.endpoint_id,
+		` + prefix + `.event_type, ` + prefix + `.payload, ` + prefix + `.status,
+		` + prefix + `.attempt_count, ` + prefix + `.max_attempts,
+		` + prefix + `.next_attempt_at, ` + prefix + `.last_attempt_at,
+		` + prefix + `.response_status, ` + prefix + `.response_body,
+		` + prefix + `.last_error, ` + prefix + `.created_at, ` + prefix + `.updated_at
+	`
 }
 
 func (s *PostgresStorage) UpdateWebhookDelivery(ctx context.Context, delivery *domain.WebhookDelivery) error {

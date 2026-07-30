@@ -14,13 +14,34 @@ type WebhookEndpointRepository interface {
 	GetWebhookEndpoint(ctx context.Context, orgID, id uuid.UUID) (*domain.WebhookEndpoint, error)
 	UpdateWebhookEndpoint(ctx context.Context, endpoint *domain.WebhookEndpoint) error
 	SoftDeleteWebhookEndpoint(ctx context.Context, orgID, id uuid.UUID, now time.Time) error
+	ListActiveWebhookEndpointsForEvent(ctx context.Context, orgID uuid.UUID, eventType domain.WebhookEventType) ([]*domain.WebhookEndpoint, error)
 }
 
 type WebhookDeliveryRepository interface {
 	CreateWebhookDelivery(ctx context.Context, delivery *domain.WebhookDelivery) error
 	GetWebhookDelivery(ctx context.Context, orgID, id uuid.UUID) (*domain.WebhookDelivery, error)
 	ListDueWebhookDeliveries(ctx context.Context, now time.Time, limit int) ([]*domain.WebhookDelivery, error)
+	ClaimDueWebhookDeliveries(ctx context.Context, now time.Time, limit int) ([]*domain.WebhookDelivery, error)
 	UpdateWebhookDelivery(ctx context.Context, delivery *domain.WebhookDelivery) error
+}
+
+type TaskEventPublisher interface {
+	PublishTaskEvent(ctx context.Context, eventType domain.WebhookEventType, task *domain.Task) error
+}
+
+type WebhookHTTPRequest struct {
+	URL     string
+	Headers map[string]string
+	Body    []byte
+}
+
+type WebhookHTTPResponse struct {
+	StatusCode int
+	Body       string
+}
+
+type WebhookHTTPClient interface {
+	Send(ctx context.Context, request WebhookHTTPRequest) (*WebhookHTTPResponse, error)
 }
 
 type WebhookSecretCipher interface {

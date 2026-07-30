@@ -14,12 +14,17 @@ import (
 )
 
 type Service struct {
-	storage ports.Storage
-	broker  ports.Broker
+	storage        ports.Storage
+	broker         ports.Broker
+	eventPublisher ports.TaskEventPublisher
 }
 
-func NewService(storage ports.Storage, broker ports.Broker) *Service {
-	return &Service{storage: storage, broker: broker}
+func NewService(storage ports.Storage, broker ports.Broker, eventPublishers ...ports.TaskEventPublisher) *Service {
+	service := &Service{storage: storage, broker: broker}
+	if len(eventPublishers) > 0 {
+		service.eventPublisher = eventPublishers[0]
+	}
+	return service
 }
 
 type CreateTaskInput struct {
@@ -82,6 +87,7 @@ func (s *Service) CreateTask(ctx context.Context, input CreateTaskInput) (*domai
 		}
 		return nil, false, err
 	}
+	s.publishTaskEvent(ctx, domain.WebhookEventTaskCreated, task)
 
 	now := time.Now().UTC()
 	if task.ScheduledAt.After(now) {
@@ -133,6 +139,7 @@ func (s *Service) CancelTask(ctx context.Context, orgID, id uuid.UUID) (*domain.
 		return nil, err
 	}
 	_ = s.broker.Remove(ctx, orgID, task.Queue, task.ID)
+	s.publishTaskEvent(ctx, domain.WebhookEventTaskCancelled, task)
 	return task, nil
 }
 
@@ -184,6 +191,12 @@ func (s *Service) Ready(ctx context.Context) error {
 		return err
 	}
 	return s.broker.Ping(ctx)
+}
+
+func (s *Service) publishTaskEvent(ctx context.Context, eventType domain.WebhookEventType, task *domain.Task) {
+	if s.eventPublisher != nil {
+		_ = s.eventPublisher.PublishTaskEvent(ctx, eventType, task)
+	}
 }
 
 func requestFingerprint(input CreateTaskInput) (string, json.RawMessage, error) {

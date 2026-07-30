@@ -31,8 +31,9 @@ func main() {
 	defer broker.Close()
 
 	limiter := redisbroker.NewTokenBucketLimiter(broker.Client(), 2, 5)
-	service := usecase.NewService(storage, broker)
 	secretCipher := webhook.NewSecretCipher(cfg.WebhookSecretEncryptionKey)
+	eventService := usecase.NewWebhookEventService(storage, storage, cfg.WebhookDeliveryMaxAttempts)
+	service := usecase.NewService(storage, broker, eventService)
 	webhookService := usecase.NewWebhookService(storage, secretCipher, cfg.AllowInsecureLocalWebhooks)
 	auth := usecase.NewAuthService(storage)
 	handler := api.NewHandler(service, logger, webhookService)

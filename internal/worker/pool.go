@@ -120,6 +120,7 @@ func (p *Pool) process(parentCtx context.Context, taskID uuid.UUID) {
 		}
 		return
 	}
+	p.engine.PublishProcessingEvent(taskCtx, task)
 
 	hbCtx, hbCancel := context.WithCancel(taskCtx)
 	defer hbCancel()

@@ -68,6 +68,26 @@ func (repository *webhookEndpointRepositoryStub) SoftDeleteWebhookEndpoint(_ con
 	return nil
 }
 
+func (repository *webhookEndpointRepositoryStub) ListActiveWebhookEndpointsForEvent(
+	_ context.Context,
+	orgID uuid.UUID,
+	eventType domain.WebhookEventType,
+) ([]*domain.WebhookEndpoint, error) {
+	items := make([]*domain.WebhookEndpoint, 0)
+	for _, endpoint := range repository.endpoints {
+		if endpoint.OrgID != orgID || !endpoint.IsActive || endpoint.DeletedAt != nil {
+			continue
+		}
+		for _, subscribedEvent := range endpoint.EventTypes {
+			if subscribedEvent == eventType {
+				items = append(items, cloneWebhookEndpoint(endpoint))
+				break
+			}
+		}
+	}
+	return items, nil
+}
+
 func cloneWebhookEndpoint(endpoint *domain.WebhookEndpoint) *domain.WebhookEndpoint {
 	cloned := *endpoint
 	cloned.EventTypes = append([]domain.WebhookEventType(nil), endpoint.EventTypes...)

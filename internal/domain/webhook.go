@@ -32,11 +32,31 @@ type WebhookDeliveryStatus string
 
 const (
 	WebhookDeliveryPending    WebhookDeliveryStatus = "pending"
-	WebhookDeliveryProcessing WebhookDeliveryStatus = "processing"
-	WebhookDeliverySucceeded  WebhookDeliveryStatus = "succeeded"
+	WebhookDeliveryDelivering WebhookDeliveryStatus = "delivering"
+	WebhookDeliveryDelivered  WebhookDeliveryStatus = "delivered"
+	WebhookDeliveryRetrying   WebhookDeliveryStatus = "retrying"
 	WebhookDeliveryFailed     WebhookDeliveryStatus = "failed"
-	WebhookDeliveryDeadLetter WebhookDeliveryStatus = "dead_letter"
 )
+
+type WebhookTaskSummary struct {
+	ID          uuid.UUID  `json:"id"`
+	Queue       string     `json:"queue"`
+	Status      TaskStatus `json:"status"`
+	Priority    int        `json:"priority"`
+	Attempts    int        `json:"attempts"`
+	MaxAttempts int        `json:"max_attempts"`
+	LastError   string     `json:"last_error,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+type WebhookEventPayload struct {
+	EventID   uuid.UUID          `json:"event_id"`
+	EventType WebhookEventType   `json:"event_type"`
+	CreatedAt time.Time          `json:"created_at"`
+	OrgID     uuid.UUID          `json:"org_id"`
+	Task      WebhookTaskSummary `json:"task"`
+}
 
 type WebhookEndpoint struct {
 	ID         uuid.UUID `json:"id"`

@@ -180,6 +180,7 @@ make test-integration  Run isolated Postgres and Redis integration tests
 make lint     Run go vet
 make api      Run the producer API locally
 make worker   Run one worker locally
+make webhook-worker  Run the EventForge delivery worker locally
 make dashboard  Run the Next.js dashboard on localhost:3000
 make redis-rebuild  Rebuild pending/delayed Redis state from Postgres
 ```

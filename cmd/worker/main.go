@@ -14,6 +14,7 @@ import (
 	"github.com/shyxur/flowforge/internal/engine"
 	"github.com/shyxur/flowforge/internal/ports"
 	"github.com/shyxur/flowforge/internal/storage/postgres"
+	"github.com/shyxur/flowforge/internal/usecase"
 	"github.com/shyxur/flowforge/internal/worker"
 	"go.uber.org/zap"
 )
@@ -55,7 +56,8 @@ func main() {
 	limiter := redisbroker.NewTokenBucketLimiter(broker.Client(), cfg.RateLimitPerSec, cfg.RateLimitPerSec*2)
 
 	retryPolicy := domain.DefaultRetryPolicy()
-	eng := engine.NewEngine(storage, broker, retryPolicy, cfg.TaskTimeout, logger)
+	eventService := usecase.NewWebhookEventService(storage, storage, cfg.WebhookDeliveryMaxAttempts)
+	eng := engine.NewEngine(storage, broker, retryPolicy, cfg.TaskTimeout, logger, eventService)
 
 	runCtx, stop := worker.ContextWithSignals(ctx, logger)
 	defer stop()
