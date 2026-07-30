@@ -1,4 +1,4 @@
-.PHONY: up down migrate test lint api worker
+.PHONY: up down migrate test test-integration lint api worker
 
 up:
 	docker compose up --build -d
@@ -11,6 +11,9 @@ migrate:
 
 test:
 	go test ./...
+
+test-integration:
+	sh ./scripts/test-integration.sh
 
 lint:
 	go vet ./...

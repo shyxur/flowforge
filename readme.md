@@ -145,9 +145,18 @@ make up       Start Postgres, Redis, migrations, API and workers
 make down     Stop the local stack
 make migrate  Run pending migrations
 make test     Run all tests
+make test-integration  Run isolated Postgres and Redis integration tests
 make lint     Run go vet
 make api      Run the producer API locally
 make worker   Run one worker locally
+```
+
+Integration tests use `docker-compose.integration.yml`, ephemeral container
+filesystems, and alternate host ports. They never reuse the development
+Postgres volume. Run them with:
+
+```bash
+make test-integration
 ```
 
 ## Troubleshooting
