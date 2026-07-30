@@ -10,10 +10,14 @@ The product target is [`windylane.dev`](https://windylane.dev).
 
 Current release: [`v0.4.1-release-polish`](https://github.com/shyxur/windylane/releases/tag/v0.4.1-release-polish)
 
+Prepared release: [v0.5.0 — TaskCanvas](docs/releases/v0.5.0.md)
+
 QueueFlow provides a multi-tenant, at-least-once task queue. Postgres is the
 durable source of truth; Redis handles priority-aware dispatch and hot state.
 EventForge adds tenant-scoped, signed webhook delivery for task lifecycle
-events.
+events. TaskCanvas adds tenant-scoped visual workflow authoring, immutable
+publishing, durable execution, and node-level timeline inspection. QueueLens
+analytics are not implemented yet.
 
 ## Core features
 
@@ -30,7 +34,7 @@ events.
 - Tenant-scoped TaskCanvas workflow drafts, publish-safe graph validation,
   immutable version snapshots, and durable backend execution through
   QueueFlow/EventForge, with visual authoring plus cursor-paginated execution
-  history and immutable-version node timelines.
+  history, immutable-version node timelines, recovery, and cancellation.
 
 ## Architecture
 
@@ -55,6 +59,11 @@ Worker pool
 - `internal/storage/postgres`: tenant-scoped durable state.
 - `internal/broker/redis`: pending, processing, delayed and DLQ transport.
 - `internal/engine`, `internal/worker`: execution, retry, reclaim and shutdown.
+
+TaskCanvas stores mutable drafts separately from immutable published versions.
+Its reconciler advances durable node execution records, dispatches task nodes
+through QueueFlow, dispatches webhook nodes through EventForge, and resumes
+persisted delay nodes without in-memory sleeps.
 
 Redis messages contain `org_id` and `task_id`. Keys use:
 
@@ -267,10 +276,14 @@ curl -i http://localhost:8080/v1/workflows \
 ```
 
 See [TaskCanvas workflows](docs/taskcanvas.md) for graph rules, immutable
-version snapshots, execution node schemas, idempotency, recovery, and API
-details. The visual editor supports draft creation, node/edge configuration,
-validation, publishing, and version inspection. Execution timeline UI is not
-implemented yet.
+version snapshots, complete API examples, dashboard usage, execution node
+schemas, idempotency, recovery, cancellation, limitations, and
+troubleshooting. The visual editor supports draft creation, node/edge
+configuration, validation, publishing, and version inspection. The execution
+dashboard supports version selection, JSON input, filtered history, immutable
+node timelines, visibility-aware polling, and cancellation. It does not
+provide autosave, replay, manual node retry, collaborative editing, an
+arbitrary condition language, or QueueLens analytics.
 
 ## Worker lifecycle
 
@@ -352,6 +365,8 @@ TaskCanvas dashboard routes:
 /workflows
 /workflows/new
 /workflows/{id}
+/workflows/{id}/executions
+/workflows/{id}/executions/{executionId}
 ```
 
 For local use, start the API and webhook worker with `make up`, then run
@@ -403,10 +418,11 @@ generated or mock screenshots are not product evidence.
 
 - [x] Phase 1 — QueueFlow core task engine and dashboard.
 - [x] Phase 2 — EventForge webhook management and delivery lifecycle.
-- [ ] Phase 3 — TaskCanvas visual workflow orchestration (draft CRUD, visual
-  builder, graph validation, publishing, immutable snapshots, and backend
-  execution available; execution timeline UI pending).
-- [ ] Phase 4 — QueueLens observability, metrics, and throughput analytics.
+- [x] Phase 3 — TaskCanvas visual workflow orchestration at v0.5.0: draft CRUD,
+  visual builder, graph validation, immutable publishing, durable execution,
+  execution timelines, recovery, and cancellation.
+- [ ] Phase 4 — QueueLens observability, metrics, and throughput analytics
+  (next; not implemented).
 
 ## License and brand policy
 
