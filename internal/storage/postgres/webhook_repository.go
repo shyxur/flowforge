@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -241,6 +242,64 @@ func (s *PostgresStorage) GetWebhookDelivery(ctx context.Context, orgID, id uuid
 	return delivery, nil
 }
 
+func (s *PostgresStorage) ListWebhookDeliveries(
+	ctx context.Context,
+	orgID uuid.UUID,
+	filter domain.WebhookDeliveryFilter,
+) (*domain.WebhookDeliveryPage, error) {
+	if filter.Limit <= 0 || filter.Limit > 100 {
+		filter.Limit = 50
+	}
+	args := []any{orgID}
+	var query strings.Builder
+	fmt.Fprintf(&query, "SELECT %s FROM webhook_deliveries WHERE org_id=$1", webhookDeliveryColumns)
+	if filter.EndpointID != nil {
+		args = append(args, *filter.EndpointID)
+		fmt.Fprintf(&query, " AND endpoint_id=$%d", len(args))
+	}
+	if filter.Status != "" {
+		args = append(args, filter.Status)
+		fmt.Fprintf(&query, " AND status=$%d", len(args))
+	}
+	if filter.EventType != "" {
+		args = append(args, filter.EventType)
+		fmt.Fprintf(&query, " AND event_type=$%d", len(args))
+	}
+	if filter.Cursor != "" {
+		cursorTime, cursorID, err := decodeCursor(filter.Cursor)
+		if err != nil {
+			return nil, domain.ErrInvalidInput
+		}
+		args = append(args, cursorTime, cursorID)
+		fmt.Fprintf(&query, " AND (created_at,id) < ($%d,$%d)", len(args)-1, len(args))
+	}
+	args = append(args, filter.Limit+1)
+	fmt.Fprintf(&query, " ORDER BY created_at DESC,id DESC LIMIT $%d", len(args))
+
+	rows, err := s.pool.Query(ctx, query.String(), args...)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: list webhook deliveries: %w", err)
+	}
+	defer rows.Close()
+	page := &domain.WebhookDeliveryPage{}
+	for rows.Next() {
+		delivery, scanErr := scanWebhookDelivery(rows)
+		if scanErr != nil {
+			return nil, fmt.Errorf("postgres: list webhook deliveries scan: %w", scanErr)
+		}
+		page.Deliveries = append(page.Deliveries, delivery)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("postgres: list webhook deliveries rows: %w", err)
+	}
+	if len(page.Deliveries) > filter.Limit {
+		page.Deliveries = page.Deliveries[:filter.Limit]
+		last := page.Deliveries[len(page.Deliveries)-1]
+		page.NextCursor = encodeCursor(last.CreatedAt, last.ID)
+	}
+	return page, nil
+}
+
 func (s *PostgresStorage) ListDueWebhookDeliveries(ctx context.Context, now time.Time, limit int) ([]*domain.WebhookDelivery, error) {
 	if limit <= 0 || limit > 1000 {
 		limit = 100
@@ -345,4 +404,35 @@ func (s *PostgresStorage) UpdateWebhookDelivery(ctx context.Context, delivery *d
 		return domain.ErrWebhookDeliveryNotFound
 	}
 	return nil
+}
+
+func (s *PostgresStorage) RetryWebhookDelivery(
+	ctx context.Context,
+	orgID, id uuid.UUID,
+	now time.Time,
+) (*domain.WebhookDelivery, error) {
+	delivery, err := scanWebhookDelivery(s.pool.QueryRow(ctx, fmt.Sprintf(`
+		UPDATE webhook_deliveries
+		SET status='pending', attempt_count=0, next_attempt_at=$1,
+			last_attempt_at=NULL, response_status=NULL, response_body=NULL,
+			last_error=NULL, updated_at=$1
+		WHERE org_id=$2 AND id=$3 AND status IN ('failed','retrying')
+		RETURNING %s
+	`, webhookDeliveryColumns), now, orgID, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		existing, getErr := s.GetWebhookDelivery(ctx, orgID, id)
+		if errors.Is(getErr, domain.ErrWebhookDeliveryNotFound) {
+			return nil, domain.ErrWebhookDeliveryNotFound
+		}
+		if getErr != nil {
+			return nil, getErr
+		}
+		if existing != nil {
+			return nil, domain.ErrInvalidStateTransition
+		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("postgres: retry webhook delivery: %w", err)
+	}
+	return delivery, nil
 }

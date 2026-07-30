@@ -90,6 +90,9 @@ GET    /v1/webhooks/endpoints/{id}
 PATCH  /v1/webhooks/endpoints/{id}
 DELETE /v1/webhooks/endpoints/{id}
 POST   /v1/webhooks/endpoints/{id}/rotate-secret
+GET    /v1/webhooks/deliveries
+GET    /v1/webhooks/deliveries/{id}
+POST   /v1/webhooks/deliveries/{id}/retry
 GET    /healthz
 GET    /readyz
 ```

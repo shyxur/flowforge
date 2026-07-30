@@ -295,9 +295,11 @@ func (stub *WebhookEndpointRepositoryStub) ListActiveWebhookEndpointsForEvent(
 type WebhookDeliveryRepositoryStub struct {
 	CreateFunc   func(context.Context, *domain.WebhookDelivery) error
 	GetFunc      func(context.Context, uuid.UUID, uuid.UUID) (*domain.WebhookDelivery, error)
+	ListFunc     func(context.Context, uuid.UUID, domain.WebhookDeliveryFilter) (*domain.WebhookDeliveryPage, error)
 	ListDueFunc  func(context.Context, time.Time, int) ([]*domain.WebhookDelivery, error)
 	ClaimDueFunc func(context.Context, time.Time, int) ([]*domain.WebhookDelivery, error)
 	UpdateFunc   func(context.Context, *domain.WebhookDelivery) error
+	RetryFunc    func(context.Context, uuid.UUID, uuid.UUID, time.Time) (*domain.WebhookDelivery, error)
 }
 
 func (stub *WebhookDeliveryRepositoryStub) CreateWebhookDelivery(ctx context.Context, delivery *domain.WebhookDelivery) error {
@@ -312,6 +314,17 @@ func (stub *WebhookDeliveryRepositoryStub) GetWebhookDelivery(ctx context.Contex
 		return stub.GetFunc(ctx, orgID, id)
 	}
 	return nil, domain.ErrWebhookDeliveryNotFound
+}
+
+func (stub *WebhookDeliveryRepositoryStub) ListWebhookDeliveries(
+	ctx context.Context,
+	orgID uuid.UUID,
+	filter domain.WebhookDeliveryFilter,
+) (*domain.WebhookDeliveryPage, error) {
+	if stub.ListFunc != nil {
+		return stub.ListFunc(ctx, orgID, filter)
+	}
+	return &domain.WebhookDeliveryPage{}, nil
 }
 
 func (stub *WebhookDeliveryRepositoryStub) ListDueWebhookDeliveries(ctx context.Context, now time.Time, limit int) ([]*domain.WebhookDelivery, error) {
@@ -333,4 +346,15 @@ func (stub *WebhookDeliveryRepositoryStub) UpdateWebhookDelivery(ctx context.Con
 		return stub.UpdateFunc(ctx, delivery)
 	}
 	return nil
+}
+
+func (stub *WebhookDeliveryRepositoryStub) RetryWebhookDelivery(
+	ctx context.Context,
+	orgID, id uuid.UUID,
+	now time.Time,
+) (*domain.WebhookDelivery, error) {
+	if stub.RetryFunc != nil {
+		return stub.RetryFunc(ctx, orgID, id, now)
+	}
+	return nil, domain.ErrInvalidStateTransition
 }

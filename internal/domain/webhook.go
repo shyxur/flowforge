@@ -38,6 +38,16 @@ const (
 	WebhookDeliveryFailed     WebhookDeliveryStatus = "failed"
 )
 
+func (status WebhookDeliveryStatus) Valid() bool {
+	switch status {
+	case WebhookDeliveryPending, WebhookDeliveryDelivering, WebhookDeliveryDelivered,
+		WebhookDeliveryRetrying, WebhookDeliveryFailed:
+		return true
+	default:
+		return false
+	}
+}
+
 type WebhookTaskSummary struct {
 	ID          uuid.UUID  `json:"id"`
 	Queue       string     `json:"queue"`
@@ -89,4 +99,17 @@ type WebhookDelivery struct {
 	LastError      *string               `json:"last_error,omitempty"`
 	CreatedAt      time.Time             `json:"created_at"`
 	UpdatedAt      time.Time             `json:"updated_at"`
+}
+
+type WebhookDeliveryFilter struct {
+	EndpointID *uuid.UUID
+	Status     WebhookDeliveryStatus
+	EventType  WebhookEventType
+	Cursor     string
+	Limit      int
+}
+
+type WebhookDeliveryPage struct {
+	Deliveries []*WebhookDelivery `json:"items"`
+	NextCursor string             `json:"next_cursor,omitempty"`
 }

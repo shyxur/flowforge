@@ -20,9 +20,11 @@ type WebhookEndpointRepository interface {
 type WebhookDeliveryRepository interface {
 	CreateWebhookDelivery(ctx context.Context, delivery *domain.WebhookDelivery) error
 	GetWebhookDelivery(ctx context.Context, orgID, id uuid.UUID) (*domain.WebhookDelivery, error)
+	ListWebhookDeliveries(ctx context.Context, orgID uuid.UUID, filter domain.WebhookDeliveryFilter) (*domain.WebhookDeliveryPage, error)
 	ListDueWebhookDeliveries(ctx context.Context, now time.Time, limit int) ([]*domain.WebhookDelivery, error)
 	ClaimDueWebhookDeliveries(ctx context.Context, now time.Time, limit int) ([]*domain.WebhookDelivery, error)
 	UpdateWebhookDelivery(ctx context.Context, delivery *domain.WebhookDelivery) error
+	RetryWebhookDelivery(ctx context.Context, orgID, id uuid.UUID, now time.Time) (*domain.WebhookDelivery, error)
 }
 
 type TaskEventPublisher interface {

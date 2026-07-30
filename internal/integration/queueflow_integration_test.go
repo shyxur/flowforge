@@ -170,6 +170,25 @@ func testWebhookRepositories(t *testing.T, ctx context.Context, storage *postgre
 		t.Fatalf("claim due webhook deliveries = %+v err=%v", due, err)
 	}
 	delivery := due[0]
+	lastError := "integration failure"
+	delivery.Status = domain.WebhookDeliveryFailed
+	delivery.LastError = &lastError
+	delivery.AttemptCount = delivery.MaxAttempts
+	delivery.UpdatedAt = now.Add(time.Second)
+	if err := storage.UpdateWebhookDelivery(ctx, delivery); err != nil {
+		t.Fatalf("mark webhook delivery failed: %v", err)
+	}
+	page, err := storage.ListWebhookDeliveries(ctx, orgID, domain.WebhookDeliveryFilter{
+		EndpointID: &endpoint.ID, Status: domain.WebhookDeliveryFailed,
+		EventType: domain.WebhookEventTaskCreated, Limit: 10,
+	})
+	if err != nil || len(page.Deliveries) != 1 || page.Deliveries[0].ID != delivery.ID {
+		t.Fatalf("filtered webhook deliveries = %+v err=%v", page, err)
+	}
+	retried, err := storage.RetryWebhookDelivery(ctx, orgID, delivery.ID, now.Add(2*time.Second))
+	if err != nil || retried.Status != domain.WebhookDeliveryPending || retried.AttemptCount != 0 {
+		t.Fatalf("retry webhook delivery = %+v err=%v", retried, err)
+	}
 	if _, err := storage.GetWebhookDelivery(ctx, uuid.New(), delivery.ID); !errors.Is(err, domain.ErrWebhookDeliveryNotFound) {
 		t.Fatalf("cross-org webhook delivery read error = %v", err)
 	}
