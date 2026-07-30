@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { StatusBadge } from "@/components/status-badge";
+import { TaskEvents } from "@/components/task-events";
 import { getTask, QueueFlowAPIError } from "@/lib/queueflow";
 import {
   cancelTaskAction,
@@ -43,6 +44,7 @@ export default async function TaskDetailPage({ params }: Props) {
 
   return (
     <div>
+      <TaskEvents />
       <Link className="back-link" href="/tasks">
         ← Back to tasks
       </Link>

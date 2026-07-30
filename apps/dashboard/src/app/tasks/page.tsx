@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { StatusBadge } from "@/components/status-badge";
+import { TaskEvents } from "@/components/task-events";
 import { listTasks } from "@/lib/queueflow";
 
 export const metadata: Metadata = { title: "Tasks" };
@@ -21,6 +22,7 @@ export default async function TasksPage({ searchParams }: Props) {
 
   return (
     <div>
+      <TaskEvents />
       <p className="eyebrow">Task explorer</p>
       <div className="page-heading-row">
         <div>

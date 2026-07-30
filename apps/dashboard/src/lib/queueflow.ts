@@ -115,3 +115,15 @@ export function deleteTask(id: string): Promise<void> {
     method: "DELETE",
   });
 }
+
+export async function openTaskEventStream(signal: AbortSignal) {
+  const { baseURL, apiKey } = config();
+  return fetch(`${baseURL}/v1/events/tasks`, {
+    cache: "no-store",
+    headers: {
+      Accept: "text/event-stream",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    signal,
+  });
+}

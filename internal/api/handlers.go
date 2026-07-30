@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -268,6 +269,67 @@ func (h *Handler) Ready(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+}
+
+func (h *Handler) StreamTaskEvents(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeAPIError(w, http.StatusInternalServerError, "stream_unsupported", "streaming is unavailable", nil)
+		return
+	}
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache, no-transform")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.WriteString(w, "retry: 3000\n\n")
+	flusher.Flush()
+
+	orgID := MustPrincipal(r.Context()).OrgID
+	seen := make(map[uuid.UUID]string)
+	poll := func() bool {
+		page, err := h.service.ListTasks(r.Context(), orgID, domain.TaskFilter{Limit: 100})
+		if err != nil {
+			h.logger.Warn("task event poll failed", zap.Error(err))
+			_, _ = io.WriteString(w, ": task poll temporarily unavailable\n\n")
+			flusher.Flush()
+			return true
+		}
+		for _, task := range page.Tasks {
+			version := string(task.Status) + "|" + task.UpdatedAt.UTC().Format(time.RFC3339Nano)
+			if seen[task.ID] == version {
+				continue
+			}
+			seen[task.ID] = version
+			data, err := json.Marshal(task)
+			if err != nil {
+				continue
+			}
+			if _, err := fmt.Fprintf(w, "event: task\ndata: %s\n\n", data); err != nil {
+				return false
+			}
+		}
+		_, _ = io.WriteString(w, ": keepalive\n\n")
+		flusher.Flush()
+		return true
+	}
+
+	if !poll() {
+		return
+	}
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+			if !poll() {
+				return
+			}
+		}
+	}
 }
 
 func (h *Handler) taskMutation(w http.ResponseWriter, r *http.Request, fn func(context.Context, uuid.UUID, uuid.UUID) (*domain.Task, error)) {

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/shyxur/flowforge/internal/domain"
@@ -24,11 +25,16 @@ func (fn authFunc) Authenticate(ctx context.Context, key string) (*domain.Princi
 
 type serviceStub struct {
 	TaskService
-	getTask func(context.Context, uuid.UUID, uuid.UUID) (*domain.Task, error)
+	getTask   func(context.Context, uuid.UUID, uuid.UUID) (*domain.Task, error)
+	listTasks func(context.Context, uuid.UUID, domain.TaskFilter) (*domain.TaskPage, error)
 }
 
 func (s *serviceStub) GetTask(ctx context.Context, orgID, id uuid.UUID) (*domain.Task, error) {
 	return s.getTask(ctx, orgID, id)
+}
+
+func (s *serviceStub) ListTasks(ctx context.Context, orgID uuid.UUID, filter domain.TaskFilter) (*domain.TaskPage, error) {
+	return s.listTasks(ctx, orgID, filter)
 }
 
 func TestInvalidAndRevokedAPIKeyReturn401(t *testing.T) {
@@ -126,6 +132,53 @@ func TestGetTaskUsesAuthenticatedOrg(t *testing.T) {
 	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestTaskEventsUseAuthenticatedOrg(t *testing.T) {
+	orgID, taskID := uuid.New(), uuid.New()
+	called := make(chan struct{})
+	service := &serviceStub{
+		listTasks: func(_ context.Context, gotOrg uuid.UUID, _ domain.TaskFilter) (*domain.TaskPage, error) {
+			if gotOrg != orgID {
+				t.Errorf("stream org = %s, want %s", gotOrg, orgID)
+			}
+			select {
+			case <-called:
+			default:
+				close(called)
+			}
+			return &domain.TaskPage{Tasks: []*domain.Task{{
+				ID: taskID, OrgID: orgID, Queue: "default",
+				Status: domain.StatusPending, UpdatedAt: time.Now().UTC(),
+			}}}, nil
+		},
+	}
+	router := testRouter(service, allowAuth(orgID))
+	ctx, cancel := context.WithCancel(context.Background())
+	req := httptest.NewRequest(http.MethodGet, "/v1/events/tasks", nil).WithContext(ctx)
+	req.Header.Set("Authorization", "Bearer valid")
+	rec := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		router.ServeHTTP(rec, req)
+		close(done)
+	}()
+	<-called
+	cancel()
+	<-done
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"id":"`+taskID.String()) {
+		t.Fatalf("status/body = %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestTaskEventsRequireAuthentication(t *testing.T) {
+	router := testRouter(&serviceStub{}, allowAuth(uuid.New()))
+	req := httptest.NewRequest(http.MethodGet, "/v1/events/tasks", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
 	}
 }
 

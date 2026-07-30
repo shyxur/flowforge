@@ -24,6 +24,7 @@ func NewRouter(h *Handler, auth Authenticator, limiter ports.RateLimiter, logger
 	v1.HandleFunc("POST /v1/workers/{id}/heartbeat", h.WorkerHeartbeat)
 	v1.HandleFunc("GET /v1/dlq", h.ListDLQ)
 	v1.HandleFunc("POST /v1/dlq/{id}/requeue", h.RequeueDLQ)
+	v1.HandleFunc("GET /v1/events/tasks", h.StreamTaskEvents)
 
 	var protected http.Handler = v1
 	protected = RateLimitMiddleware(limiter)(protected)

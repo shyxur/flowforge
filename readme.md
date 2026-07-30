@@ -78,6 +78,7 @@ GET    /v1/workers
 POST   /v1/workers/{id}/heartbeat
 GET    /v1/dlq
 POST   /v1/dlq/{id}/requeue
+GET    /v1/events/tasks
 GET    /healthz
 GET    /readyz
 ```
@@ -169,6 +170,14 @@ make dashboard
 
 `QUEUEFLOW_API_KEY` is consumed only by Next.js server components and server
 actions. It must never use a `NEXT_PUBLIC_` prefix.
+
+### Task event stream
+
+`GET /v1/events/tasks` is an authenticated, tenant-scoped Server-Sent Events
+stream. It polls the latest task state every two seconds and emits `task`
+events when a task is first observed or its status/update timestamp changes.
+The dashboard connects through its own server route so the API key is never
+sent to the browser.
 
 ## Troubleshooting
 
